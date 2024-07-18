@@ -14,7 +14,7 @@ routines.
 
 To build a test program:
 * Ensure working directory contains makefile, `src/` containing all `*.f` and corresponding
-*.mod files, an empty `obj/` directory, and an empty `out/` directory.
+`*.mod` files, an empty `obj/` directory, and an empty `out/` directory.
 * Update makefile with your desired program name
 * Update `main.f` to perform the desired test computations
 * Run `make`
