@@ -13,8 +13,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 add_compile_options(-O3)
 
-option(VSH_BUILD_SHARED  "Build shared library (libvsh.so) in addition to static" OFF)
-option(VSH_INSTALL_TESTS "Install the vsh_test executable"                         OFF)
+option(VSH_BUILD_SHARED    "Build shared library (libvsh.so) in addition to static" OFF)
+option(VSH_INSTALL_TESTS   "Install the vsh_test executable"                         OFF)
+option(VSH_BUILD_BENCHMARK "Build the vsh_benchmark executable (batch vs. naive-loop timing)" OFF)
 
 # ── Generate version Fortran module ──────────────────────────────────────────
 configure_file(
@@ -100,6 +101,21 @@ if(VSH_REGRESSION_TEST)
   set_tests_properties(vsh_regression PROPERTIES
     DEPENDS vsh_validation
     FIXTURES_REQUIRED vsh_validation_dirs
+  )
+endif()
+
+# ── Benchmark executable (opt-in; not part of ctest) ──────────────────────────
+# Timing is machine/compiler-dependent, so it is a manually-run build target
+# rather than a pass/fail test. Run the resulting executable from the repo
+# root so it can create ./benchmark/*.dat, mirroring how vsh_test writes to
+# ./validation/.
+if(VSH_BUILD_BENCHMARK)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/benchmark")
+  add_executable(vsh_benchmark src/benchmark.f90 src/bench_main.f90)
+  target_link_libraries(vsh_benchmark PRIVATE vsh)
+  set_target_properties(vsh_benchmark PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()
 

@@ -321,3 +321,37 @@ ctest --test-dir build --output-on-failure
 This adds a `vsh_regression` ctest that runs `cmake/check_regression.py`,
 which compares every `validation/*.dat` file against its reference
 counterpart to a relative tolerance of 10⁻¹⁰.
+
+## Benchmarking
+
+The batch (`_ALL`) routines exist to avoid redundantly recomputing shared
+recurrence terms when evaluating every mode at a point — `vsh_benchmark`
+measures that payoff directly, timing each batch routine against a naive
+loop over the corresponding single-mode routine, swept across increasing
+`Lmax`. It is an opt-in build target, not a `ctest`, since wall-clock
+timings are machine- and compiler-dependent and shouldn't gate a pass/fail
+build:
+
+```bash
+cmake -B build -DVSH_BUILD_BENCHMARK=ON
+cmake --build build
+./build/vsh_benchmark
+```
+
+Run it from the repository root (as shown) so it can create `benchmark/`
+alongside `validation/`. Each measurement auto-calibrates its repeat count
+against wall-clock time, so results stay resolvable from `Lmax=5` up
+through `Lmax=320` without a hardcoded repetition count.
+
+| File | Comparison |
+|---|---|
+| `benchmark/bench_legendre.dat`     | `ASSOC_LEGENDRE_NORM_ALL` vs. looped `ASSOC_LEGENDRE` |
+| `benchmark/bench_ssh.dat`          | `SSH_ALL` vs. looped `SSH` |
+| `benchmark/bench_vsh_tor.dat`      | `VSH_TOR_ALL` vs. looped `VSH_TOR` |
+| `benchmark/bench_vsh_pol_up.dat`   | `VSH_POL_UP_ALL` vs. looped `VSH_POL_UP` |
+| `benchmark/bench_vsh_pol_dn.dat`   | `VSH_POL_DN_ALL` vs. looped `VSH_POL_DN` |
+
+Each file has columns `LMAX  N_MODES  T_BATCH_sec  T_LOOP_sec  SPEEDUP`,
+one row per `Lmax` in `{5, 10, 20, 40, 80, 160, 320}`, timed per grid-point
+evaluation over a 50-point sweep in the routine's natural argument
+(colatitude, or `x=cos(theta)` for the Legendre case).
