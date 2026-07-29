@@ -21,23 +21,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+from plotstyle import BLUE, ORANGE, AQUA, YELLOW, INK_PRIMARY, \
+    INK_SECONDARY, SURFACE, style_axes, savefig_pair
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR   = os.path.dirname(SCRIPT_DIR)
 BENCH_DIR  = os.path.join(ROOT_DIR, 'benchmark')
-FIG_DIR    = os.path.join(ROOT_DIR, 'tex', 'Copernicus-EGU', 'figures')
-
-# ── validated categorical palette (dataviz skill, references/palette.md) ────
-BLUE    = '#2a78d6'
-ORANGE  = '#eb6834'
-AQUA    = '#1baf7a'
-YELLOW  = '#eda100'
-
-INK_PRIMARY   = '#0b0b0b'
-INK_SECONDARY = '#52514e'
-INK_MUTED     = '#898781'
-GRIDLINE      = '#e1e0d9'
-AXIS_LINE     = '#c3c2b7'
-SURFACE       = '#fcfcfb'
 
 # All five benchmarked routines, for the per-routine scaling small multiples.
 ROUTINES = [
@@ -64,16 +53,6 @@ def load(fname):
     lmax, n_modes, t_batch, t_loop, speedup = np.loadtxt(
         os.path.join(BENCH_DIR, fname), comments='#', unpack=True)
     return lmax, n_modes, t_batch, t_loop, speedup
-
-
-def style_axes(ax):
-    ax.set_facecolor(SURFACE)
-    ax.grid(True, which='major', color=GRIDLINE, linewidth=0.7, zorder=0)
-    for spine in ('top', 'right'):
-        ax.spines[spine].set_visible(False)
-    for spine in ('left', 'bottom'):
-        ax.spines[spine].set_color(AXIS_LINE)
-    ax.tick_params(colors=INK_MUTED, labelsize=8)
 
 
 def plot_scaling():
@@ -125,22 +104,5 @@ def plot_speedup():
 
 
 if __name__ == '__main__':
-    os.makedirs(FIG_DIR, exist_ok=True)
-
-    fig1 = plot_scaling()
-    fig1.savefig(os.path.join(FIG_DIR, 'benchmark_scaling.pdf'),
-                 dpi=300, facecolor=fig1.get_facecolor(),
-                 bbox_inches='tight')
-    fig1.savefig(os.path.join(FIG_DIR, 'benchmark_scaling.png'),
-                 dpi=150, facecolor=fig1.get_facecolor(),
-                 bbox_inches='tight')
-
-    fig2 = plot_speedup()
-    fig2.savefig(os.path.join(FIG_DIR, 'benchmark_speedup.pdf'),
-                 dpi=300, facecolor=fig2.get_facecolor(),
-                 bbox_inches='tight')
-    fig2.savefig(os.path.join(FIG_DIR, 'benchmark_speedup.png'),
-                 dpi=150, facecolor=fig2.get_facecolor(),
-                 bbox_inches='tight')
-
-    print(f"Wrote figures to {FIG_DIR}")
+    savefig_pair(plot_scaling(), 'benchmark_scaling')
+    savefig_pair(plot_speedup(), 'benchmark_speedup')
