@@ -16,6 +16,10 @@ After the test suite has been run to regenerate the validation data:
 import re
 import os
 import numpy as np
+import matplotlib.pyplot as plt
+
+from plotstyle import BLUE, INK_PRIMARY, INK_SECONDARY, SURFACE, \
+    style_axes, savefig_pair
 
 # ── path setup ────────────────────────────────────────────────────────────────
 
@@ -88,37 +92,54 @@ def cross_validation_stats(fname):
     return vsh_rel, gw_rel
 
 
-def alp_consistency_stats(fname):
+def alp_consistency_pairs(fname):
     """
-    Max abs_diff from ASSOC_LEGENDRE_ALL or DDX_ASSOC_LEGENDRE_ALL batch file.
+    (L, abs_diff) per row from an ASSOC_LEGENDRE_ALL or
+    DDX_ASSOC_LEGENDRE_ALL batch file.
     Format: L  M  X  batch_val  single_val  abs_diff
     """
-    rows = load_plain(fname)
-    return max(float(row[-1]) for row in rows)
+    return [(int(row[0]), float(row[-1])) for row in load_plain(fname)]
+
+
+def alp_consistency_stats(fname):
+    return max(err for _, err in alp_consistency_pairs(fname))
+
+
+def ssh_consistency_pairs(fname):
+    """
+    (L, |batch - single|) per row from batch_ssh_cons.dat.
+    Format: L  M  theta  phi  re_batch  im_batch  re_single  im_single
+    """
+    pairs = []
+    for row in load_plain(fname):
+        batch  = complex(float(row[4]), float(row[5]))
+        single = complex(float(row[6]), float(row[7]))
+        pairs.append((int(row[0]), abs(batch - single)))
+    return pairs
 
 
 def ssh_consistency_stats(fname):
+    return max(err for _, err in ssh_consistency_pairs(fname))
+
+
+def vsh_consistency_pairs(fname):
     """
-    Max |batch - single| from batch_ssh_cons.dat.
-    Format: L  M  theta  phi  re_batch  im_batch  re_single  im_single
+    (L, max component abs-difference) per row from any batch_*_cons.dat
+    file. Format: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
     """
-    rows = load_plain(fname)
-    diffs = []
-    for row in rows:
-        batch  = complex(float(row[4]), float(row[5]))
-        single = complex(float(row[6]), float(row[7]))
-        diffs.append(abs(batch - single))
-    return max(diffs)
+    return [(int(row[0]), max(float(row[-3]), float(row[-2]), float(row[-1])))
+            for row in load_plain(fname)]
 
 
 def vsh_consistency_stats(fname):
-    """
-    Max over all three component abs-differences from any batch_*_cons.dat file.
-    Format: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
-    """
-    rows = load_plain(fname)
-    return max(max(float(row[-3]), float(row[-2]), float(row[-1]))
-               for row in rows)
+    return max(err for _, err in vsh_consistency_pairs(fname))
+
+
+def max_by_degree(pairs):
+    """Reduce a list of (L, err) pairs to (sorted L values, max err per L)."""
+    degrees = sorted(set(l for l, _ in pairs))
+    errs = [max(e for l, e in pairs if l == d) for d in degrees]
+    return degrees, errs
 
 
 def ssh_ortho_stats():
@@ -173,6 +194,43 @@ def latex_sci(val):
     if abs(mant - 1.0) < 0.06:
         return f'$10^{{{exp}}}$'
     return f'${mant:.1f}\\times10^{{{exp}}}$'
+
+
+# ── convergence figure ────────────────────────────────────────────────────────
+
+# Same five routine families as py/plot_benchmark.py, so the accuracy and
+# performance figures read as a matched pair in the manuscript.
+CONVERGENCE_FAMILIES = [
+    ('batch_alm_cons.dat',        'Legendre',          alp_consistency_pairs),
+    ('batch_ssh_cons.dat',        'SSH',               ssh_consistency_pairs),
+    ('batch_vsh_tor_cons.dat',    'VSH toroidal',      vsh_consistency_pairs),
+    ('batch_vsh_pol_up_cons.dat', 'VSH poloidal (up)', vsh_consistency_pairs),
+    ('batch_vsh_pol_dn_cons.dat', 'VSH poloidal (dn)', vsh_consistency_pairs),
+]
+
+
+def plot_convergence():
+    """
+    Max batch-vs-single-mode absolute error per angular degree l, for the
+    five families in CONVERGENCE_FAMILIES. Confirms the batch evaluators
+    track the single-mode routines to machine precision uniformly across
+    l, not just at the scalar max reported in validation_values.tex.
+    """
+    fig, axes = plt.subplots(1, 5, figsize=(15, 3.2), sharey=True,
+                              facecolor=SURFACE)
+    for ax, (fname, title, pairs_fn) in zip(axes, CONVERGENCE_FAMILIES):
+        degrees, errs = max_by_degree(pairs_fn(fname))
+        style_axes(ax)
+        ax.plot(degrees, np.clip(errs, 1e-18, None), color=BLUE,
+                marker='o', markersize=5, linewidth=2,
+                solid_capstyle='round', zorder=3)
+        ax.set_yscale('log')
+        ax.set_xlabel(r'$\ell$', fontsize=9, color=INK_SECONDARY)
+        ax.set_title(title, color=INK_PRIMARY, fontsize=10)
+    axes[0].set_ylabel('max batch vs. single-mode\nabsolute error',
+                        fontsize=9, color=INK_SECONDARY)
+    fig.tight_layout()
+    savefig_pair(fig, 'convergence_accuracy')
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -234,6 +292,8 @@ def main():
         for k, v in stats.items():
             fh.write(f'\\newcommand{{\\val{k}}}{{{latex_sci(v)}}}\n')
     print(f'\nWrote {outpath}')
+
+    plot_convergence()
 
 
 if __name__ == '__main__':

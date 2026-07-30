@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(FORTVSH
-  VERSION   0.2.0
+  VERSION   0.3.0
   LANGUAGES Fortran C
 )
 
@@ -13,8 +13,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 add_compile_options(-O3)
 
-option(VSH_BUILD_SHARED  "Build shared library (libvsh.so) in addition to static" OFF)
-option(VSH_INSTALL_TESTS "Install the vsh_test executable"                         OFF)
+option(VSH_BUILD_SHARED    "Build shared library (libvsh.so) in addition to static" OFF)
+option(VSH_INSTALL_TESTS   "Install the vsh_test executable"                         OFF)
+option(VSH_BUILD_BENCHMARK "Build the vsh_benchmark executable (batch vs. naive-loop timing)" OFF)
+option(VSH_BUILD_EXAMPLES  "Build the poloidal-dipole worked-example executables"    OFF)
 
 # ── Generate version Fortran module ──────────────────────────────────────────
 configure_file(
@@ -101,6 +103,46 @@ if(VSH_REGRESSION_TEST)
     DEPENDS vsh_validation
     FIXTURES_REQUIRED vsh_validation_dirs
   )
+endif()
+
+# ── Benchmark executable (opt-in; not part of ctest) ──────────────────────────
+# Timing is machine/compiler-dependent, so it is a manually-run build target
+# rather than a pass/fail test. Run the resulting executable from the repo
+# root so it can create ./benchmark/*.dat, mirroring how vsh_test writes to
+# ./validation/.
+if(VSH_BUILD_BENCHMARK)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/benchmark")
+  add_executable(vsh_benchmark src/benchmark.f90 src/bench_main.f90)
+  target_link_libraries(vsh_benchmark PRIVATE vsh)
+  set_target_properties(vsh_benchmark PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
+
+# ── Worked-example executables (opt-in; not part of ctest) ────────────────────
+# Three fully independent poloidal-dipole demonstrations (no shared module
+# between them, matching the manuscript's "kept separated" worked-example
+# structure). Physics demonstrations, not the correctness gate, so — like
+# the benchmark target — they are a manually-run build option rather than
+# a ctest, though each prints its own PASS/FAIL self-check. Run from the
+# repo root so each can create its own ./examples/<name>/ subdirectory.
+if(VSH_BUILD_EXAMPLES)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/dipole_synthesis")
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/dipole_uniform_sphere")
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/dipole_flux_expulsion")
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/vsh_decomposition")
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/gwi_gwj_sweep")
+
+  foreach(EXAMPLE_NAME dipole_synthesis dipole_uniform_sphere dipole_flux_expulsion
+                       vsh_decomposition gwi_gwj_sweep)
+    add_executable(${EXAMPLE_NAME} src/examples/${EXAMPLE_NAME}.f90)
+    target_link_libraries(${EXAMPLE_NAME} PRIVATE vsh)
+    set_target_properties(${EXAMPLE_NAME} PROPERTIES
+      Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+  endforeach()
 endif()
 
 # ── FortranCInterface: name-mangling header for future C/Python bindings ──────
