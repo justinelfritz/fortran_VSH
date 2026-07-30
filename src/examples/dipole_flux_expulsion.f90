@@ -1,18 +1,16 @@
-!     Worked example (2c): idealized superconducting-core flux expulsion.
-!     Ties to Elfritz (2016), cited in the manuscript, on field expulsion
-!     from superconducting neutron-star cores. Simplified to the standard
-!     "perfectly conducting sphere in a uniform ambient field" textbook
-!     problem: a sphere of radius R totally excludes flux (idealized
-!     Meissner/Type-I limit -- real neutron-star cores are believed
-!     Type-II, with flux confined to quantized fluxoids rather than fully
-!     excluded; that fuller picture is not computed here). The boundary
-!     condition Br(R)=0 for all theta (no field may cross into a perfect
-!     diamagnet) fixes the induced dipole moment in closed form:
-!         MU_IND = -B0_AMB * R^3 / 2
-!     which superposes on the uniform ambient field to give the exterior
-!     field. Interior field is exactly zero. Purely magnetostatic: no
-!     induction equation, no time evolution.
-
+!> Worked example (2c): idealized superconducting-core flux expulsion.
+!> Ties to Elfritz (2016), cited in the manuscript, on field expulsion
+!> from superconducting neutron-star cores. Simplified to the standard
+!> "perfectly conducting sphere in a uniform ambient field" textbook
+!> problem: a sphere of radius \( R \) totally excludes flux (idealized
+!> Meissner/Type-I limit -- real neutron-star cores are believed Type-II,
+!> with flux confined to quantized fluxoids rather than fully excluded;
+!> that fuller picture is not computed here). The boundary condition
+!> \( B_r(R)=0 \) for all \( \theta \) (no field may cross into a perfect
+!> diamagnet) fixes the induced dipole moment in closed form:
+!> \( \mu_{ind} = -B_{0,amb}R^3/2 \), which superposes on the uniform
+!> ambient field to give the exterior field. Interior field is exactly
+!> zero. Purely magnetostatic: no induction equation, no time evolution.
 PROGRAM DIPOLE_FLUX_EXPULSION
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi

@@ -1,7 +1,26 @@
-!     Function definitions for scalar spherical harmonics (SSH),
-!     vector spherical harmonics (VSH), and related
-!     angular functions
-
+!> Scalar and vector spherical harmonics (VSH), Legendre functions, and
+!> the angular-momentum coupling coefficients (Clebsch-Gordan, Wigner
+!> 3-j, and Geppert-Wiebicke) used to build them.
+!>
+!> Two vector bases are provided over the same underlying scalar
+!> spherical harmonic \( Y_\ell^m \): the "polar" basis
+!> (`PVSH_RAD`/`PVSH_POL`/`PVSH_TOR`, indexed by \( (\ell,m) \) directly)
+!> familiar from the poloidal/toroidal decomposition of divergence-free
+!> vector fields in MHD, and the "standard" total-angular-momentum-coupled
+!> basis (`VSH_TOR`/`VSH_POL_DN`/`VSH_POL_UP`, indexed by the coupled
+!> total angular momentum \( J=\ell,\ell{-}1,\ell{+}1 \)) familiar from the
+!> quantum-mechanical vector-spherical-harmonic literature (e.g. Barrera
+!> et al., 1985). Every routine has a single-point form (one mode at one
+!> \( (\theta,\phi) \)) and a batch `_ALL` form (every
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \) mode at one point in a
+!> single call, reusing shared recurrences internally for efficiency).
+!>
+!> All angles are in radians, with \( \theta \) the colatitude
+!> (\( 0\le\theta\le\pi \), from the north pole) and \( \phi \) the
+!> longitude (\( 0\le\phi<2\pi \)). Every spherical harmonic here uses the
+!> fully-normalized convention (\( \int |Y_\ell^m|^2\,d\Omega=1 \)) with
+!> the Condon-Shortley phase, matching common physics/quantum-mechanics
+!> conventions (e.g. Edmonds, 1960).
 MODULE VSH
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi, j
@@ -192,7 +211,12 @@ PUBLIC :: &
   END INTERFACE FACTORIAL
 
 CONTAINS
-!     Compute Factorial k! for k>=0
+
+!> Factorial \( k! \) for \( k \ge 0 \), computed by direct multiplication.
+!>
+!> @param K Non-negative integer argument.
+!> Returns: \( k! \) as a double-precision real (avoids integer overflow
+!>   for moderate `K`; see [[LOG_FACT]] for large-`K` stability).
   FUNCTION FACTORIAL_DP(K) RESULT(FACTORIAL)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: K
@@ -206,7 +230,13 @@ CONTAINS
   END FUNCTION FACTORIAL_DP
 
 
-!     Compute Legendre polynomial P_l(x) order l at -1<=x<=+1
+!> Legendre polynomial \( P_\ell(x) \), degree \( \ell \ge 0 \), via the
+!> standard three-term recurrence
+!> $$ (\ell{+}1)\,P_{\ell+1}(x) = (2\ell{+}1)\,x\,P_\ell(x) - \ell\,P_{\ell-1}(x). $$
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param X Argument, \( -1 \le x \le 1 \) (typically \( x=\cos\theta \)).
+!> Returns: \( P_\ell(x) \).
   FUNCTION LEGENDRE_DP(L,X) RESULT(LEGENDRE)
   IMPLICIT NONE
   REAL(KIND=dp), INTENT(IN) :: X
@@ -235,7 +265,14 @@ CONTAINS
   RETURN
   END FUNCTION LEGENDRE_DP
 
-!     Compute d/dx of Legendre polynomial P_l(x) order l at -1<=x<=+1
+!> Derivative \( dP_\ell/dx \) of the Legendre polynomial, via
+!> \( (x^2{-}1)\,P_\ell'(x) = \ell\,[x P_\ell(x) - P_{\ell-1}(x)] \) away
+!> from the poles, and the closed-form pole values
+!> \( P_\ell'(\pm1) = (\pm1)^{\ell+1}\,\ell(\ell{+}1)/2 \) at \( x=\pm1 \).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param X Argument, \( -1 \le x \le 1 \).
+!> Returns: \( dP_\ell/dx \) evaluated at `X`.
   FUNCTION DDX_LEGENDRE_DP(L,X) RESULT(DDX_LEGENDRE)
   IMPLICIT NONE
   REAL(KIND=dp), INTENT(IN) :: X
@@ -256,9 +293,23 @@ CONTAINS
   RETURN
   END FUNCTION DDX_LEGENDRE_DP
 
+!> Associated Legendre function \( P_\ell^k(x) \), Condon-Shortley phase
+!> convention, computed by the classic Bonnet-type upward recurrence
+!> starting from \( P_m^m(x) = (-1)^m(2m{-}1)!!\,(1{-}x^2)^{m/2} \). For
+!> negative order, \( P_\ell^{-k}(x) = (-1)^k\,\frac{(\ell-k)!}{(\ell+k)!}
+!> P_\ell^k(x) \). Unnormalized (unlike [[ASSOC_LEGENDRE_NORM_ALL]]); loses
+!> numerical stability above \( \ell \sim 1400 \) as the intermediate
+!> \( P_m^m \) values grow/shrink without bound. Returns 0 for
+!> \( |k|>\ell \) or \( |x|>1 \).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param X Argument, \( -1 \le x \le 1 \) (typically \( x=\cos\theta \)).
+!> Returns: \( P_\ell^k(x) \).
   FUNCTION ASSOC_LEGENDRE_DP(L, K, X) RESULT(ASSOC_LEGENDRE)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L, K
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
   REAL(KIND=dp), INTENT(IN) :: X
   INTEGER(KIND=i4) :: ABSK, I
   REAL(KIND=dp) :: ASSOC_LEGENDRE
@@ -302,15 +353,24 @@ CONTAINS
   ASSOC_LEGENDRE = Plm
   END FUNCTION ASSOC_LEGENDRE_DP
 
-!     Compute P_l^k(x) and d/dx P_l^k(x) in a single upward recurrence.
-!     Eliminates the two separate ASSOC_LEGENDRE calls in DDX_ASSOC_LEGENDRE
-!     and the redundant SSH + DDX_ASSOC_LEGENDRE pair in GRAD_SSH / L_SSH.
-!     Returns PLK=0, DPLK=0 for |k|>l or |x|>1; DPLK=0 at the poles (|x|=1).
+!> Private helper: \( P_\ell^k(x) \) and \( dP_\ell^k/dx \) together, from a
+!> single upward recurrence pass. Avoids the redundant separate
+!> [[ASSOC_LEGENDRE]] calls that [[DDX_ASSOC_LEGENDRE]] would otherwise
+!> need, and the repeated [[SSH]] + [[DDX_ASSOC_LEGENDRE]] evaluation that
+!> [[GRAD_SSH]] and [[L_SSH]] both build on.
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param X Argument, \( -1 \le x \le 1 \).
+!> @param PLK Output \( P_\ell^k(x) \); 0 for \( |k|>\ell \) or \( |x|>1 \).
+!> @param DPLK Output \( dP_\ell^k/dx \); 0 at the poles (\( |x|=1 \)).
   SUBROUTINE ASSOC_LEGENDRE_AND_DERIV_DP(L, K, X, PLK, DPLK)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN)  :: L, K
+  INTEGER(KIND=i4), INTENT(IN)  :: L
+  INTEGER(KIND=i4), INTENT(IN)  :: K
   REAL(KIND=dp),    INTENT(IN)  :: X
-  REAL(KIND=dp),    INTENT(OUT) :: PLK, DPLK
+  REAL(KIND=dp),    INTENT(OUT) :: PLK
+  REAL(KIND=dp),    INTENT(OUT) :: DPLK
   INTEGER(KIND=i4) :: ABSK, I
   REAL(KIND=dp)    :: Pmm, Pmm1, Plm, Plm1, somx2, DOM, SIGN_K
   ABSK = ABS(K)
@@ -359,20 +419,40 @@ CONTAINS
   END IF
   END SUBROUTINE ASSOC_LEGENDRE_AND_DERIV_DP
 
+!> Derivative \( dP_\ell^k/dx \) of the associated Legendre function,
+!> via [[ASSOC_LEGENDRE_AND_DERIV]] (thin wrapper that discards \(
+!> P_\ell^k(x) \) itself).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param X Argument, \( -1 \le x \le 1 \).
+!> Returns: \( dP_\ell^k/dx \) evaluated at `X`; 0 at the poles (\( |x|=1
+!>   \)) or for \( |k|>\ell \).
   FUNCTION DDX_ASSOC_LEGENDRE_DP(L, K, X) RESULT(RES)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L, K
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
   REAL(KIND=dp), INTENT(IN)    :: X
   REAL(KIND=dp)                :: RES, PLK_UNUSED
   CALL ASSOC_LEGENDRE_AND_DERIV(L, K, X, PLK_UNUSED, RES)
   END FUNCTION DDX_ASSOC_LEGENDRE_DP
 
-!     Compute scalar spherical harmonic Y_l^k(theta,phi) at 0<=theta<=pi, 0<=phi<=2pi
-!     Ylk = sqrt{(2l+1)/4pi}sqrt{(l-k)!/(l+k)!}P_l^k*exp(i k phi)
+!> Scalar spherical harmonic \( Y_\ell^k(\theta,\phi) \), fully normalized
+!> with the Condon-Shortley phase:
+!> $$ Y_\ell^k(\theta,\phi) = \sqrt{\frac{2\ell+1}{4\pi}\frac{(\ell-k)!}{(\ell+k)!}}\,
+!>    P_\ell^k(\cos\theta)\,e^{ik\phi}. $$
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( Y_\ell^k(\theta,\phi) \), complex.
   FUNCTION SSH_DP(L,K,THETA,PHI) RESULT(SSH)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: NORM
   COMPLEX(KIND=dp) :: SSH
   NORM = DSQRT((2.d0*L+1.d0)/(4.d0*pi))* &
@@ -381,11 +461,25 @@ CONTAINS
   RETURN
   END FUNCTION SSH_DP
 
-!     Compute angular gradient of scalar spherical harmonic Ylk at 0<=theta<=pi, 0<=phi<=2pi
+!> Angular (surface) gradient of the scalar spherical harmonic,
+!> \( \nabla_\perp Y_\ell^k = \hat\theta\,\partial_\theta Y_\ell^k +
+!> \hat\phi\,\frac{1}{\sin\theta}\partial_\phi Y_\ell^k \). Returned as a
+!> 3-vector \( (\hat r,\hat\theta,\hat\phi) \) with a zero radial
+!> component, since the gradient of a purely angular function is purely
+!> tangential.
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( (0,\,\partial_\theta Y_\ell^k,\,\frac{1}{\sin\theta}
+!>   \partial_\phi Y_\ell^k) \), complex 3-vector.
   FUNCTION GRAD_SSH_DP(L,K,THETA,PHI) RESULT(GRAD_SSH)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK
   COMPLEX(KIND=dp) :: EPHIM, YLM
   COMPLEX(KIND=dp), DIMENSION(3) :: GRAD_SSH
@@ -406,11 +500,25 @@ CONTAINS
   END FUNCTION GRAD_SSH_DP
 
 
-!     Compute rhat X angular gradient of scalar spherical harmonic Ylk at 0<=theta<=pi, 0<=phi<=2pi
+!> The angular-momentum-operator field \( \hat r \times \nabla_\perp
+!> Y_\ell^k \) (proportional to the quantum-mechanical orbital
+!> angular-momentum operator \( \mathbf{L}\,Y_\ell^k \) acting on the
+!> scalar harmonic). Simply [[GRAD_SSH]] rotated 90 degrees within the
+!> tangent plane: \( \hat r\times(\hat\theta\,G_\theta+\hat\phi\,G_\phi)
+!> = \hat\theta\,(-G_\phi) + \hat\phi\,G_\theta \).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( (0,\,-\frac{1}{\sin\theta}\partial_\phi Y_\ell^k,\,
+!>   \partial_\theta Y_\ell^k) \), complex 3-vector.
   FUNCTION L_SSH_DP(L,K,THETA,PHI) RESULT(L_SSH)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK
   COMPLEX(KIND=dp) :: EPHIM, YLM
   COMPLEX(KIND=dp), DIMENSION(3) :: L_SSH
@@ -431,11 +539,24 @@ CONTAINS
   END FUNCTION L_SSH_DP
 
 
-!     Compute longitudinal/radial component of polar vector spherical harmonic Y_(L,K)^(-1) = rhat.Ylm
+!> Radial member of the polar vector spherical harmonic basis,
+!> \( \mathbf{Y}_{\ell m}^{(-1)} = \hat r\,Y_\ell^m(\theta,\phi) \). Purely
+!> radial by construction (zero horizontal components) -- combined with a
+!> radial stream function \( f(r) \), this is the \( B_r \)-generating
+!> piece of a poloidal magnetic (or any divergence-free) field,
+!> \( B_r = \frac{\ell(\ell+1)}{r^2}\,f(r)\,Y_\ell^m \).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( (Y_\ell^m,\,0,\,0) \), complex 3-vector.
   FUNCTION PVSH_RAD_DP(L,K,THETA,PHI) RESULT(PVSH_RAD)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   COMPLEX(KIND=dp) :: YLM
   COMPLEX(KIND=dp), DIMENSION(3) :: PVSH_RAD
   YLM = SSH(L,K,THETA,PHI)
@@ -446,11 +567,28 @@ CONTAINS
   END FUNCTION PVSH_RAD_DP
 
 
-!     Compute transverse/toroidal component of polar vector spherical harmonic Y_(L,K)^(0) ~ L(SSH)
+!> Toroidal member of the polar vector spherical harmonic basis,
+!> \( \mathbf{Y}_{\ell m}^{(0)} = \frac{1}{\sqrt{\ell(\ell+1)}}\,
+!> \hat r\times\nabla_\perp Y_\ell^m \) -- purely horizontal (zero radial
+!> component), identical in form to [[L_SSH]] but normalized by
+!> \( 1/\sqrt{\ell(\ell+1)} \). This is the horizontal-field piece of a
+!> toroidal magnetic field, \( \mathbf{B}_{tor} = T(r)\,
+!> \mathbf{Y}_{\ell m}^{(0)} \) for a toroidal stream function
+!> \( T(r) \). Zero for \( \ell=0 \) (no toroidal monopole).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( (0,\,\frac{i}{\sqrt{\ell(\ell+1)}}\frac{1}{\sin\theta}
+!>   \partial_\phi Y_\ell^m,\,-\frac{i}{\sqrt{\ell(\ell+1)}}\partial_\theta
+!>   Y_\ell^m) \), complex 3-vector.
   FUNCTION PVSH_TOR_DP(L,K,THETA,PHI) RESULT(PVSH_TOR)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK,SCALE
   COMPLEX(KIND=dp) :: EPHIM,YLM,GTH,GPH
   COMPLEX(KIND=dp), DIMENSION(3) :: PVSH_TOR
@@ -479,11 +617,29 @@ CONTAINS
   END FUNCTION PVSH_TOR_DP
 
 
-!     Compute transverse/polar component of polar vector spherical harmonic Y_(L,K)^(+1) ~ GRADSSH
+!> Poloidal (horizontal) member of the polar vector spherical harmonic
+!> basis, \( \mathbf{Y}_{\ell m}^{(+1)} = \frac{1}{\sqrt{\ell(\ell+1)}}\,
+!> \nabla_\perp Y_\ell^m \) -- purely horizontal (zero radial component),
+!> i.e. [[GRAD_SSH]] normalized by \( 1/\sqrt{\ell(\ell+1)} \). Combined
+!> with a radial stream function \( f(r) \), this is the horizontal-field
+!> piece of a poloidal field,
+!> \( \mathbf{B}_{\theta,\phi} = \frac{1}{r}\frac{d(rf)}{dr}\,
+!> \sqrt{\ell(\ell+1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Zero for
+!> \( \ell=0 \) (a constant has no horizontal gradient).
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( (0,\,\frac{1}{\sqrt{\ell(\ell+1)}}\partial_\theta Y_\ell^m,\,
+!>   \frac{1}{\sqrt{\ell(\ell+1)}}\frac{1}{\sin\theta}\partial_\phi
+!>   Y_\ell^m) \), complex 3-vector.
   FUNCTION PVSH_POL_DP(L,K,THETA,PHI) RESULT(PVSH_POL)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK,SCALE
   COMPLEX(KIND=dp) :: EPHIM,YLM,GTH,GPH
   COMPLEX(KIND=dp), DIMENSION(3) :: PVSH_POL
@@ -512,11 +668,25 @@ CONTAINS
   END FUNCTION PVSH_POL_DP
 
 
-!     Compute transverse/toroidal component of standard vector spherical harmonic Y_(L,K)^L
+!> Toroidal member of the "standard" (total-angular-momentum-coupled)
+!> vector spherical harmonic basis, \( \mathbf{Y}_{\ell m}^{J=\ell} \).
+!> Identical to [[PVSH_TOR]] -- the toroidal member is common to both the
+!> polar and standard bases, since \( \hat r\times\nabla_\perp Y_\ell^m \)
+!> already carries total angular momentum \( J=\ell \) with no
+!> \( J=\ell\pm1 \) admixture.
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( \mathbf{Y}_{\ell m}^{J=\ell}(\theta,\phi) \), complex
+!>   3-vector (identical to [[PVSH_TOR]]).
   FUNCTION VSH_TOR_DP(L,K,THETA,PHI) RESULT(VSH_TOR)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   COMPLEX(KIND=dp) :: YLM
   COMPLEX(KIND=dp), DIMENSION(3) :: VSH_TOR
   VSH_TOR = PVSH_TOR(L,K,THETA,PHI)
@@ -524,11 +694,32 @@ CONTAINS
   END FUNCTION VSH_TOR_DP
 
 
-!     Compute transverse component of standard vector spherical harmonic Y_(L,K)^L-1
+!> The \( J=\ell{-}1 \) member of the standard (total-angular-momentum
+!> coupled) vector spherical harmonic basis, built from the polar basis by
+!> $$ \mathbf{Y}_{\ell m}^{\ell-1} = \sqrt{\tfrac{\ell}{2\ell+1}}\,
+!>    \mathbf{Y}_{\ell m}^{(-1)} + \sqrt{\tfrac{\ell+1}{2\ell+1}}\,
+!>    \mathbf{Y}_{\ell m}^{(+1)}, $$
+!> i.e. [[PVSH_RAD]] and [[PVSH_POL]] rotated together by an
+!> \( \ell \)-dependent angle (see [[VSH_POL_UP]] for the companion
+!> \( J=\ell{+}1 \) rotation). Zero for \( \ell=0 \) (no \( J=-1 \)).
+!>
+!> @warning At \( \ell=1 \) this does *not* reproduce the classic 2:1
+!>   magnetic-dipole radial:horizontal ratio -- `VSH_POL_DN(1,0,...)` is
+!>   proportional to \( (\cos\theta,\,-\sin\theta,\,0) \), a 1:-1 ratio.
+!>   [[VSH_POL_UP]] is the one that reproduces the dipole pattern.
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( \mathbf{Y}_{\ell m}^{\ell-1}(\theta,\phi) \), complex
+!>   3-vector.
   FUNCTION VSH_POL_DN_DP(L,K,THETA,PHI) RESULT(VSH_POL_DN)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK,SC1,SC23
   COMPLEX(KIND=dp) :: EPHIM,YLM,GTH,GPH
   COMPLEX(KIND=dp), DIMENSION(3) :: VSH_POL_DN
@@ -558,11 +749,31 @@ CONTAINS
   END FUNCTION VSH_POL_DN_DP
 
 
-!     Compute transverse component of polar vector spherical harmonic Y_(L,K)^L+1
+!> The \( J=\ell{+}1 \) member of the standard (total-angular-momentum
+!> coupled) vector spherical harmonic basis, built from the polar basis by
+!> $$ \mathbf{Y}_{\ell m}^{\ell+1} = \sqrt{\tfrac{\ell+1}{2\ell+1}}\,
+!>    \mathbf{Y}_{\ell m}^{(-1)} - \sqrt{\tfrac{\ell}{2\ell+1}}\,
+!>    \mathbf{Y}_{\ell m}^{(+1)}, $$
+!> the companion rotation to [[VSH_POL_DN]]'s \( J=\ell{-}1 \). Unlike
+!> [[VSH_POL_DN]] this is well-defined (nonzero radial part) at
+!> \( \ell=0 \), since \( J=1 \) still exists when \( \ell=0 \).
+!>
+!> @note At \( \ell=1 \), `VSH_POL_UP(1,0,...)` is proportional to
+!>   \( (2\cos\theta,\,\sin\theta,\,0) \) -- the classic 2:1 magnetic-dipole
+!>   radial:horizontal ratio.
+!>
+!> @param L Degree, \( \ell \ge 0 \).
+!> @param K Order, \( -\ell \le k \le \ell \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: \( \mathbf{Y}_{\ell m}^{\ell+1}(\theta,\phi) \), complex
+!>   3-vector.
   FUNCTION VSH_POL_UP_DP(L,K,THETA,PHI) RESULT(VSH_POL_UP)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L,K
-  REAL(KIND=dp), INTENT(IN) :: THETA,PHI
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: K
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   REAL(KIND=dp) :: SINTH,NORM,PLK,DPLK,SC1,SC23
   COMPLEX(KIND=dp) :: EPHIM,YLM,GTH,GPH
   COMPLEX(KIND=dp), DIMENSION(3) :: VSH_POL_UP
@@ -591,11 +802,38 @@ CONTAINS
   RETURN
   END FUNCTION VSH_POL_UP_DP
 
-!     Compute Clebsch-Gordan coefficient
-!     Adapted from David Simpson (NASA GSFC)
+!> Clebsch-Gordan coefficient \( \langle j_1 m_1 j_2 m_2 | j_3 m_3\rangle \)
+!> for coupling two angular momenta \( j_1,j_2 \) to a total \( j_3 \),
+!> via the closed-form Racah sum (evaluated in log-factorial form for
+!> numerical stability at large arguments -- see [[LOG_FACT]]):
+!> $$ \langle j_1 m_1 j_2 m_2|j_3 m_3\rangle = \delta_{m_3,m_1+m_2}
+!>    \sqrt{2j_3+1}\,\Delta(j_1j_2j_3)\times $$
+!> $$ \sqrt{(j_1{+}m_1)!(j_1{-}m_1)!(j_2{+}m_2)!(j_2{-}m_2)!(j_3{+}m_3)!(j_3{-}m_3)!}
+!>    \sum_k \frac{(-1)^k}{k!\,(j_1{+}j_2{-}j_3{-}k)!(j_3{-}j_1{-}m_2{+}k)!
+!>    (j_3{-}j_2{+}m_1{+}k)!(j_1{-}m_1{-}k)!(j_2{+}m_2{-}k)!}, $$
+!> where \( \Delta(j_1j_2j_3) = \sqrt{\frac{(j_1+j_2-j_3)!(j_2+j_3-j_1)!
+!> (j_3+j_1-j_2)!}{(j_1+j_2+j_3+1)!}} \). Adapted from David Simpson (NASA
+!> GSFC). Automatically returns 0 for any invalid combination -- violated
+!> triangle inequality \( |j_1-j_2|\le j_3\le j_1+j_2 \), \( |m_i|>j_i \>
+!> \), or \( m_1+m_2\ne m_3 \) -- so it is always safe to call with an
+!> arbitrary sextuple of integers, e.g. when sweeping a parameter range.
+!>
+!> @param J1 First angular momentum, \( j_1\ge0 \).
+!> @param M1 First projection, \( -j_1\le m_1\le j_1 \).
+!> @param J2 Second angular momentum, \( j_2\ge0 \).
+!> @param M2 Second projection, \( -j_2\le m_2\le j_2 \).
+!> @param J3 Coupled angular momentum, \( j_3\ge0 \).
+!> @param M3 Coupled projection, \( -j_3\le m_3\le j_3 \).
+!> Returns: \( \langle j_1 m_1 j_2 m_2|j_3 m_3\rangle \), real (0 if
+!>   selection rules are violated).
   FUNCTION CGCOEFF_DP(J1,M1,J2,M2,J3,M3) RESULT(CGCOEFF)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: J1,M1,J2,M2,J3,M3
+  INTEGER(KIND=i4), INTENT(IN) :: J1
+  INTEGER(KIND=i4), INTENT(IN) :: M1
+  INTEGER(KIND=i4), INTENT(IN) :: J2
+  INTEGER(KIND=i4), INTENT(IN) :: M2
+  INTEGER(KIND=i4), INTENT(IN) :: J3
+  INTEGER(KIND=i4), INTENT(IN) :: M3
   INTEGER(KIND=i4) :: K,KMIN,KMAX
   REAL(KIND=dp) :: SUMK,TERM,CGCOEFF
 
@@ -645,7 +883,15 @@ CONTAINS
   RETURN
   END FUNCTION CGCOEFF_DP
 
-!     Compute log(factorial()) for stability  
+!> \( \ln(n!) \), via \( \ln(n!) = \ln\Gamma(n{+}1) \) (the intrinsic
+!> `LOG_GAMMA`). Used throughout [[CGCOEFF]], [[SSH]], and
+!> [[ASSOC_LEGENDRE]] to evaluate factorial ratios like
+!> \( \sqrt{(\ell-k)!/(\ell+k)!} \) as
+!> \( \exp(\tfrac12[\texttt{LOG\_FACT}(\ell{-}k)-\texttt{LOG\_FACT}(\ell{+}k)]) \)
+!> without overflowing the individual factorials for large \( \ell \).
+!>
+!> @param N Non-negative integer argument (\( n\le1 \) returns 0).
+!> Returns: \( \ln(n!) \).
   FUNCTION LOG_FACT_DP(N) RESULT(LOG_FACT)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: N
@@ -658,12 +904,23 @@ CONTAINS
   END IF
   END FUNCTION LOG_FACT_DP
 
-!     Compute Gauss-Legendre quadrature nodes and weights for exact
-!     integration of degree <= 2*LMAX+1 using LMAX+1 points.
-!     ZERO(i): GL nodes as cos(theta), ordered from -1 to +1.
-!     W(i)   : corresponding weights for integral int_{-1}^{1} f(x) dx.
-!     Nodes are zeros of P_{LMAX+1}(x); weights via w=2/((1-x^2)*P'(x)^2).
-!     Newton iteration converges to machine precision in <10 steps.
+!> Gauss-Legendre quadrature nodes and weights, exact for integrating any
+!> polynomial of degree \( \le 2\ell_{max}{+}1 \) using only
+!> \( \ell_{max}{+}1 \) points -- the natural quadrature for spherical
+!> harmonic transforms, since \( P_\ell^m(\cos\theta) \) is a polynomial in
+!> \( x=\cos\theta \) times \( (1{-}x^2)^{|m|/2} \), and the transform
+!> integral separates exactly into this \( x \)-quadrature times a
+!> uniform sum over \( \phi \) (itself exact for finite Fourier content).
+!> Nodes are the zeros of \( P_{\ell_{max}+1}(x) \), found by Newton
+!> iteration (converges to machine precision in under 10 steps); weights
+!> are \( w_i = 2/[(1-x_i^2)\,P_{\ell_{max}+1}'(x_i)^2] \).
+!>
+!> @param ZERO Output nodes \( x_i=\cos\theta_i \), size `LMAX+1`,
+!>   ascending from -1 to +1.
+!> @param W Output weights for \( \int_{-1}^{1}f(x)\,dx \approx
+!>   \sum_i w_i f(x_i) \), size `LMAX+1`.
+!> @param LMAX Requested exactness is degree \( 2\,\texttt{LMAX}{+}1 \);
+!>   uses `LMAX+1` quadrature points.
   SUBROUTINE SHGLQ_DP(ZERO, W, LMAX)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
@@ -698,10 +955,30 @@ CONTAINS
   END DO
   END SUBROUTINE SHGLQ_DP
 
-!     Compute Wigner 3j symbol
+!> Wigner 3-j symbol \( \begin{pmatrix}j_1&j_2&j_3\\m_1&m_2&m_3\end{pmatrix} \),
+!> via the standard conversion from [[CGCOEFF]]:
+!> $$ \begin{pmatrix}j_1&j_2&j_3\\m_1&m_2&m_3\end{pmatrix} =
+!>    \frac{(-1)^{j_1-j_2-m_3}}{\sqrt{2j_3+1}}\,
+!>    \langle j_1,-m_1,j_2,-m_2|j_3,-m_3\rangle. $$
+!> Inherits [[CGCOEFF]]'s selection-rule guards -- safe to call with any
+!> integer sextuple, returning 0 for invalid combinations.
+!>
+!> @param J1 First angular momentum, \( j_1\ge0 \).
+!> @param M1 First projection, \( -j_1\le m_1\le j_1 \).
+!> @param J2 Second angular momentum, \( j_2\ge0 \).
+!> @param M2 Second projection, \( -j_2\le m_2\le j_2 \).
+!> @param J3 Third angular momentum, \( j_3\ge0 \).
+!> @param M3 Third projection, \( -j_3\le m_3\le j_3 \).
+!> Returns: The Wigner 3-j symbol, real (0 if selection rules are
+!>   violated).
   FUNCTION SYMBOL3J_DP(J1,M1,J2,M2,J3,M3) RESULT(SYMBOL3J)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: J1,M1,J2,M2,J3,M3
+  INTEGER(KIND=i4), INTENT(IN) :: J1
+  INTEGER(KIND=i4), INTENT(IN) :: M1
+  INTEGER(KIND=i4), INTENT(IN) :: J2
+  INTEGER(KIND=i4), INTENT(IN) :: M2
+  INTEGER(KIND=i4), INTENT(IN) :: J3
+  INTEGER(KIND=i4), INTENT(IN) :: M3
   INTEGER(KIND=i4) :: K
   REAL(KIND=dp) :: TERM,CG,SYMBOL3J
   TERM = (-1)**(J3+M3+NINT(2.d0*J1))/DSQRT(2.d0*J3+1.d0)
@@ -716,19 +993,58 @@ CONTAINS
 !     Compute Wigner 9j symbol
 !-----Placeholder for future extension
 
-!     Compute dot product of two VSH evaluated at theta,phi coordinates
+!> Dot product of two 3-vectors (typically two VSH values evaluated at
+!> the same \( (\theta,\phi) \)): \( \mathbf{V}_1\cdot\mathbf{V}_2 =
+!> \sum_{c=1}^3 V_{1,c}V_{2,c} \). Note this is a plain component-wise
+!> product, *not* a Hermitian inner product -- callers wanting
+!> \( \mathbf{V}_1\cdot\mathbf{V}_2^{*} \) must conjugate `VSH2`
+!> themselves first (as done throughout `src/tests.f90` and the
+!> `examples/` drivers).
+!>
+!> @param VSH1 First complex 3-vector \( (\hat r,\hat\theta,\hat\phi) \).
+!> @param VSH2 Second complex 3-vector \( (\hat r,\hat\theta,\hat\phi) \).
+!> Returns: \( \mathbf{VSH1}\cdot\mathbf{VSH2} \), complex scalar.
   FUNCTION DOT_DP(VSH1, VSH2) RESULT(DOT)
   IMPLICIT NONE
-  COMPLEX(KIND=dp), DIMENSION(3), INTENT(IN) :: VSH1, VSH2
+  COMPLEX(KIND=dp), DIMENSION(3), INTENT(IN) :: VSH1
+  COMPLEX(KIND=dp), DIMENSION(3), INTENT(IN) :: VSH2
   COMPLEX(KIND=dp) :: DOT
   DOT = VSH1(1)*VSH2(1) + VSH1(2)*VSH2(2) + VSH1(3)*VSH2(3)
   RETURN
   END FUNCTION DOT_DP
 
 
+!> Geppert-Wiebicke axisymmetric coupling coefficient \(
+!> I_{j_1 m_1 j_2 m_2}^{\ell m} \) (Geppert & Wiebicke, 1991), a compact
+!> shorthand for the generation/amplification amplitude of a two-mode
+!> interaction in the Hall-MHD induction equation:
+!> $$ I_{j_1 m_1 j_2 m_2}^{\ell m} = \sqrt{\frac{(2j_1+1)(2j_2+1)}
+!>    {4\pi(2\ell+1)}}\,\langle j_1 0\,j_2 0|\ell 0\rangle\,
+!>    \langle j_1 m_1\,j_2 m_2|\ell m\rangle. $$
+!> This is algebraically the standard Gaunt coefficient -- the closed
+!> form for \( \int Y_{j_1}^{m_1}Y_{j_2}^{m_2}(Y_\ell^m)^{*}\,d\Omega \) --
+!> written in terms of two [[CGCOEFF]] evaluations. Built entirely from
+!> [[CGCOEFF]], which guards all selection rules, so `GWI` is safe to call
+!> with any integer sextuple and returns 0 for invalid combinations
+!> (unlike [[GWJ]], see its own selection-rule note).
+!>
+!> @param J1 First coupled degree, \( j_1\ge0 \).
+!> @param M1 First coupled order, \( -j_1\le m_1\le j_1 \).
+!> @param J2 Second coupled degree, \( j_2\ge0 \).
+!> @param M2 Second coupled order, \( -j_2\le m_2\le j_2 \).
+!> @param L Resulting degree, \( \ell\ge0 \).
+!> @param M Resulting order, \( -\ell\le m\le\ell \).
+!> Returns: \( I_{j_1 m_1 j_2 m_2}^{\ell m} \), complex (real-valued in
+!>   practice, but returned as `COMPLEX` for a uniform interface with
+!>   [[GWJ]]).
   FUNCTION GWI_DP(J1,M1,J2,M2,L,M) RESULT(GWI)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: J1,M1,J2,M2,L,M
+  INTEGER(KIND=i4), INTENT(IN) :: J1
+  INTEGER(KIND=i4), INTENT(IN) :: M1
+  INTEGER(KIND=i4), INTENT(IN) :: J2
+  INTEGER(KIND=i4), INTENT(IN) :: M2
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: M
   COMPLEX(KIND=dp) :: GWI
   GWI=DSQRT((2.d0*J1+1.d0)*(2.d0*J2+1.d0)/(2.d0*L+1.d0)/4.d0/pi)* &
     CGCOEFF(J1,0,J2,0,L,0)*CGCOEFF(J1,M1,J2,M2,L,M)
@@ -736,9 +1052,40 @@ CONTAINS
   END FUNCTION GWI_DP
 
 
+!> Geppert-Wiebicke non-axisymmetric coupling coefficient \(
+!> J_{j_1 m_1 j_2 m_2}^{\ell m} \) (Geppert & Wiebicke, 1991), the
+!> companion to [[GWI]] encoding the amplitude of a two-mode Hall-MHD
+!> interaction that generates or amplifies a non-axisymmetric component:
+!> $$ J_{j_1 m_1 j_2 m_2}^{\ell m} = -\frac{i}{2}
+!>    \sqrt{\frac{(2j_1+1)(2j_2+1)}{4\pi(2\ell+1)}}\,
+!>    \sqrt{(j_1{+}j_2{+}\ell{+}2)(j_2{+}\ell{-}j_1)(j_1{+}j_2{-}\ell{+}1)
+!>    (j_1{-}j_2{+}\ell{+}1)}\; \times $$
+!> $$ \langle j_1{+}1,0\,j_2 0|\ell 0\rangle\,
+!>    \langle j_1 m_1\,j_2 m_2|\ell m\rangle. $$
+!> Cross-validated against an independent VSH-dot-product expansion in
+!> `TEST2_GW` (`src/tests.f90`).
+!>
+!> @warning Unlike [[GWI]], the extra square-root factor above is *not*
+!>   internally selection-rule-guarded by [[CGCOEFF]] alone -- it can go
+!>   negative for out-of-range `(J1,J2,L)` triples. This routine guards it
+!>   explicitly (returning 0, matching the mathematically correct value)
+!>   so it is still safe to call with any integer sextuple.
+!>
+!> @param J1 First coupled degree, \( j_1\ge0 \).
+!> @param M1 First coupled order, \( -j_1\le m_1\le j_1 \).
+!> @param J2 Second coupled degree, \( j_2\ge0 \).
+!> @param M2 Second coupled order, \( -j_2\le m_2\le j_2 \).
+!> @param L Resulting degree, \( \ell\ge0 \).
+!> @param M Resulting order, \( -\ell\le m\le\ell \).
+!> Returns: \( J_{j_1 m_1 j_2 m_2}^{\ell m} \), complex.
   FUNCTION GWJ_DP(J1,M1,J2,M2,L,M) RESULT(GWJ)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: J1,M1,J2,M2,L,M
+  INTEGER(KIND=i4), INTENT(IN) :: J1
+  INTEGER(KIND=i4), INTENT(IN) :: M1
+  INTEGER(KIND=i4), INTENT(IN) :: J2
+  INTEGER(KIND=i4), INTENT(IN) :: M2
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: M
   REAL(KIND=dp) :: TRIANGLE_ARG
   COMPLEX(KIND=dp) :: GWJ
   ! Guard the sqrt() argument below the same way CGCOEFF guards its own
@@ -758,26 +1105,54 @@ CONTAINS
   END FUNCTION GWJ_DP
 
 
-!     Return 1D index for (L,M) in ASSOC_LEGENDRE_ALL output array
-!     SHTOOLS PlmIndex convention: l*(l+1)/2 + m + 1, requires 0<=m<=l
+!> 1D packed-triangular index for \( (\ell,m) \) into the output arrays of
+!> [[ASSOC_LEGENDRE_ALL]], [[DDX_ASSOC_LEGENDRE_ALL]],
+!> [[ASSOC_LEGENDRE_NORM_ALL]], and [[DDX_ASSOC_LEGENDRE_NORM_ALL]] (all
+!> of which only need \( 0\le m\le\ell \), by conjugate/parity symmetry).
+!> Matches the SHTOOLS `PlmIndex` convention.
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param M Order, \( 0\le m\le\ell \).
+!> Returns: Packed index \( \ell(\ell+1)/2+m+1 \), \( 1\le
+!>   \texttt{PLM\_INDEX}\le(\ell_{max}{+}1)(\ell_{max}{+}2)/2 \).
   FUNCTION PLM_INDEX(L, M)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L, M
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: M
   INTEGER(KIND=i4) :: PLM_INDEX
   PLM_INDEX = L*(L+1)/2 + M + 1
   END FUNCTION PLM_INDEX
 
-!     Return 1D index for (L,M) in SSH_ALL output array, -l<=m<=l
+!> 1D index for \( (\ell,m) \) into the output arrays of every batch
+!> `_ALL` routine that needs the full \( -\ell\le m\le\ell \) range
+!> ([[SSH_ALL]], [[GRAD_SSH_ALL]], [[L_SSH_ALL]], and every batch VSH
+!> routine).
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param M Order, \( -\ell\le m\le\ell \).
+!> Returns: Index \( \ell^2+\ell+m+1 \), \( 1\le\texttt{YLM\_INDEX}\le
+!>   (\ell_{max}{+}1)^2 \).
   FUNCTION YLM_INDEX(L, M)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: L, M
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: M
   INTEGER(KIND=i4) :: YLM_INDEX
   YLM_INDEX = L**2 + L + M + 1
   END FUNCTION YLM_INDEX
 
-!     Compute all P_l^m(x) for 0<=l<=lmax, 0<=m<=l using Bonnet recurrence
-!     P indexed by PLM_INDEX(l,m) = l*(l+1)/2 + m + 1
-!     Condon-Shortley convention; output size (lmax+1)*(lmax+2)/2
+!> All unnormalized associated Legendre functions \( P_\ell^m(x) \) for
+!> \( 0\le\ell\le\ell_{max},\,0\le m\le\ell \), via the Bonnet recurrence,
+!> in one pass (amortizing shared recurrence terms across every \( \ell
+!> \) at fixed \( m \) -- far cheaper than \( (\ell_{max}{+}1)^2/2 \)
+!> independent [[ASSOC_LEGENDRE]] calls). Condon-Shortley phase; same
+!> \( \ell\sim1400 \) stability ceiling as [[ASSOC_LEGENDRE]] (see
+!> [[ASSOC_LEGENDRE_NORM_ALL]] for the stable-to-high-\( \ell \)
+!> alternative).
+!>
+!> @param P Output, size `(LMAX+1)*(LMAX+2)/2`, indexed by
+!>   [[PLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param X Argument, \( -1\le x\le1 \) (typically \( x=\cos\theta \)).
   SUBROUTINE ASSOC_LEGENDRE_ALL_DP(P, LMAX, X)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX
@@ -804,9 +1179,17 @@ CONTAINS
   END DO
   END SUBROUTINE ASSOC_LEGENDRE_ALL_DP
 
-!     Compute all d/dx P_l^m(x) for 0<=l<=lmax, 0<=m<=l
-!     Requires precomputed P from ASSOC_LEGENDRE_ALL
-!     DP_OUT indexed by PLM_INDEX(l,m); returns 0 at poles (|x|>=1)
+!> All derivatives \( dP_\ell^m/dx \) for \( 0\le\ell\le\ell_{max},\,
+!> 0\le m\le\ell \), reusing a precomputed [[ASSOC_LEGENDRE_ALL]] table
+!> rather than recomputing \( P_\ell^m \) from scratch.
+!>
+!> @param DP_OUT Output derivatives, size `(LMAX+1)*(LMAX+2)/2`, indexed
+!>   by [[PLM_INDEX]](l,m); 0 at the poles (\( |x|\ge1 \)).
+!> @param P Precomputed \( P_\ell^m(x) \) table from
+!>   [[ASSOC_LEGENDRE_ALL]], same size/indexing.
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \) (must match `P`'s).
+!> @param X Argument, \( -1\le x\le1 \) (must match the `X` used to build
+!>   `P`).
   SUBROUTINE DDX_ASSOC_LEGENDRE_ALL_DP(DP_OUT, P, LMAX, X)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX
@@ -834,12 +1217,22 @@ CONTAINS
   END DO
   END SUBROUTINE DDX_ASSOC_LEGENDRE_ALL_DP
 
-!     Compute all 4pi-normalized P_l^m(cos theta) for 0<=l<=lmax, 0<=m<=l
-!     using the Holmes & Featherstone (2002) modified forward-column recurrence.
-!     Normalization N_lm = sqrt((2l+1)/(4pi)*(l-m)!/(l+m)!) is folded into
-!     the recurrence coefficients, keeping all intermediates O(1/sqrt(4pi))
-!     and extending numerical stability to l~2700 vs ~1400 for Bonnet.
-!     PNORM indexed by PLM_INDEX(l,m); output size (lmax+1)*(lmax+2)/2.
+!> All \( 4\pi \)-normalized associated Legendre functions
+!> \( N_\ell^m P_\ell^m(\cos\theta) \), \( N_\ell^m=\sqrt{\frac{2\ell+1}
+!> {4\pi}\frac{(\ell-m)!}{(\ell+m)!}} \) (i.e. the real-valued radial part
+!> of [[SSH]], for \( 0\le\ell\le\ell_{max},\,0\le m\le\ell \)), using the
+!> Holmes & Featherstone (2002) modified forward-column recurrence. The
+!> normalization is folded directly into the recurrence coefficients,
+!> keeping every intermediate value \( O(1/\sqrt{4\pi}) \) rather than
+!> letting \( P_m^m \) itself grow/shrink combinatorially -- this extends
+!> numerical stability to \( \ell\sim2700 \), versus \( \ell\sim1400 \)
+!> for the unnormalized [[ASSOC_LEGENDRE_ALL]]/Bonnet recurrence. This is
+!> the recurrence [[SSH_ALL]] and every batch VSH routine build on.
+!>
+!> @param PNORM Output, size `(LMAX+1)*(LMAX+2)/2`, indexed by
+!>   [[PLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param X Argument, \( -1\le x\le1 \) (typically \( x=\cos\theta \)).
   SUBROUTINE ASSOC_LEGENDRE_NORM_ALL_DP(PNORM, LMAX, X)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
@@ -872,10 +1265,22 @@ CONTAINS
   END SUBROUTINE ASSOC_LEGENDRE_NORM_ALL_DP
 
 
-!     Compute d/dx of normalized P_l^m for 0<=l<=lmax, 0<=m<=l.
-!     Requires precomputed PNORM from ASSOC_LEGENDRE_NORM_ALL.
-!     Formula: (sqrt((2l+1)(l^2-m^2)/(2l-1))*PNORM(l-1,m) - l*x*PNORM(l,m))
-!              / (1-x^2); returns 0 at poles (|x|>=1).
+!> All derivatives \( d(N_\ell^m P_\ell^m)/dx \) of the normalized
+!> associated Legendre functions, for \( 0\le\ell\le\ell_{max},\,0\le
+!> m\le\ell \), reusing a precomputed [[ASSOC_LEGENDRE_NORM_ALL]] table:
+!> $$ \frac{d(N_\ell^mP_\ell^m)}{dx} = \frac{\sqrt{\frac{(2\ell+1)
+!>    (\ell^2-m^2)}{2\ell-1}}\,N_{\ell-1}^mP_{\ell-1}^m - \ell\,x\,
+!>    N_\ell^mP_\ell^m}{1-x^2}. $$
+!> This is the recurrence [[VSH_CORE]] (and therefore every batch VSH
+!> routine) uses for the \( \hat\theta \) component.
+!>
+!> @param DPNORM Output derivatives, size `(LMAX+1)*(LMAX+2)/2`, indexed
+!>   by [[PLM_INDEX]](l,m); 0 at the poles (\( |x|\ge1 \)).
+!> @param PNORM Precomputed normalized table from
+!>   [[ASSOC_LEGENDRE_NORM_ALL]], same size/indexing.
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \) (must match `PNORM`'s).
+!> @param X Argument, \( -1\le x\le1 \) (must match the `X` used to build
+!>   `PNORM`).
   SUBROUTINE DDX_ASSOC_LEGENDRE_NORM_ALL_DP(DPNORM, PNORM, LMAX, X)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
@@ -905,13 +1310,21 @@ CONTAINS
   END SUBROUTINE DDX_ASSOC_LEGENDRE_NORM_ALL_DP
 
 
-!     Compute all Y_l^m(theta,phi) for 0<=l<=lmax, -l<=m<=l
-!     YLM indexed by YLM_INDEX(l,m) = l**2 + l + m + 1
-!     Y_l^{-m} = (-1)^m * conj(Y_l^m) via conjugate symmetry
+!> All scalar spherical harmonics \( Y_\ell^m(\theta,\phi) \) for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), in one call. Computes
+!> [[ASSOC_LEGENDRE_NORM_ALL]] once, then fills \( m\ge0 \) directly and
+!> \( m<0 \) via the conjugate symmetry \( Y_\ell^{-m} =
+!> (-1)^m\,(Y_\ell^m)^{*} \) rather than a second recurrence pass.
+!>
+!> @param YLM Output, size `(LMAX+1)**2`, indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE SSH_ALL_DP(YLM, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX
-  REAL(KIND=dp), INTENT(IN) :: THETA, PHI
+  REAL(KIND=dp), INTENT(IN) :: THETA
+  REAL(KIND=dp), INTENT(IN) :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: YLM((LMAX+1)**2)
   INTEGER(KIND=i4) :: L, M, PSIZE
   REAL(KIND=dp), ALLOCATABLE :: PNORM(:)
@@ -936,14 +1349,29 @@ CONTAINS
   DEALLOCATE(PNORM)
   END SUBROUTINE SSH_ALL_DP
 
-!     Helper: precompute YLM_OUT, GSSH_TH, GSSH_PH for all (l,m),
-!     0<=l<=LMAX, -l<=m<=l, indexed by YLM_INDEX.
-!     GSSH_TH/GPH are the theta/phi components of GRAD_SSH.
+!> Private helper shared by every batch VSH routine
+!> ([[GRAD_SSH_ALL]], [[L_SSH_ALL]], [[PVSH_RAD_ALL]], [[PVSH_POL_ALL]],
+!> [[PVSH_TOR_ALL]], [[VSH_TOR_ALL]], [[VSH_POL_UP_ALL]],
+!> [[VSH_POL_DN_ALL]]): computes \( Y_\ell^m \) and its two angular
+!> gradient components ([[GRAD_SSH]]'s \( \hat\theta,\hat\phi \) parts)
+!> for every \( (\ell,m) \) in one pass, so each caller only has to apply
+!> its own linear combination/normalization on top.
+!>
+!> @param YLM_OUT Output \( Y_\ell^m \), size `(LMAX+1)**2`, indexed by
+!>   [[YLM_INDEX]](l,m).
+!> @param GSSH_TH Output \( \hat\theta \) component of \( \nabla_\perp
+!>   Y_\ell^m \), same size/indexing.
+!> @param GSSH_PH Output \( \hat\phi \) component of \( \nabla_\perp
+!>   Y_\ell^m \), same size/indexing.
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE VSH_CORE_DP(YLM_OUT, GSSH_TH, GSSH_PH, &
                       LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: YLM_OUT((LMAX+1)**2)
   COMPLEX(KIND=dp), INTENT(OUT) :: GSSH_TH((LMAX+1)**2)
   COMPLEX(KIND=dp), INTENT(OUT) :: GSSH_PH((LMAX+1)**2)
@@ -982,12 +1410,21 @@ CONTAINS
   END SUBROUTINE VSH_CORE_DP
 
 
-!     Compute all GRAD_SSH for 0<=l<=LMAX, -l<=m<=l
-!     OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All angular gradients \( \nabla_\perp Y_\ell^m \) ([[GRAD_SSH]]) for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one
+!> [[VSH_CORE]] pass.
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
+!>   axis indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE GRAD_SSH_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: NYLM
   COMPLEX(KIND=dp), ALLOCATABLE :: YLM(:), GTH(:), GPH(:)
@@ -1001,12 +1438,21 @@ CONTAINS
   END SUBROUTINE GRAD_SSH_ALL_DP
 
 
-!     Compute all L_SSH (rhat x grad SSH) for 0<=l<=LMAX, -l<=m<=l
-!     OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All angular-momentum-operator fields \( \hat r\times\nabla_\perp
+!> Y_\ell^m \) ([[L_SSH]]) for \( 0\le\ell\le\ell_{max},\,-\ell\le
+!> m\le\ell \), from one [[VSH_CORE]] pass.
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
+!>   axis indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE L_SSH_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: NYLM
   COMPLEX(KIND=dp), ALLOCATABLE :: YLM(:), GTH(:), GPH(:)
@@ -1020,12 +1466,22 @@ CONTAINS
   END SUBROUTINE L_SSH_ALL_DP
 
 
-!     Compute all PVSH_RAD (radial polar VSH) for 0<=l<=LMAX, -l<=m<=l
-!     OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All radial polar VSH members [[PVSH_RAD]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
+!> pass.
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\)=\(Y_\ell^m\), `2`=\(\hat\theta\) (always 0),
+!>   `3`=\(\hat\phi\) (always 0); mode axis indexed by
+!>   [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE PVSH_RAD_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: NYLM
   COMPLEX(KIND=dp), ALLOCATABLE :: YLM(:), GTH(:), GPH(:)
@@ -1039,12 +1495,21 @@ CONTAINS
   END SUBROUTINE PVSH_RAD_ALL_DP
 
 
-!     Compute all PVSH_POL (poloidal polar VSH) for 0<=l<=LMAX, -l<=m<=l
-!     Zero for l=0. OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All poloidal (horizontal) polar VSH members [[PVSH_POL]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
+!> pass. Zero for \( \ell=0 \).
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
+!>   axis indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE PVSH_POL_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: L, M, NYLM, IDX
   REAL(KIND=dp)    :: SCALE
@@ -1065,12 +1530,21 @@ CONTAINS
   END SUBROUTINE PVSH_POL_ALL_DP
 
 
-!     Compute all PVSH_TOR (toroidal polar VSH) for 0<=l<=LMAX, -l<=m<=l
-!     Zero for l=0. OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All toroidal polar VSH members [[PVSH_TOR]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
+!> pass. Zero for \( \ell=0 \).
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
+!>   axis indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE PVSH_TOR_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: L, M, NYLM, IDX
   REAL(KIND=dp)    :: SCALE
@@ -1091,24 +1565,45 @@ CONTAINS
   END SUBROUTINE PVSH_TOR_ALL_DP
 
 
-!     Compute all VSH_TOR for 0<=l<=LMAX, -l<=m<=l (identical to PVSH_TOR)
-!     OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All toroidal standard-VSH members [[VSH_TOR]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \). Identical to
+!> [[PVSH_TOR_ALL]] (thin wrapper) -- the toroidal member is common to
+!> both bases.
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
+!>   axis indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE VSH_TOR_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   CALL PVSH_TOR_ALL(OUT, LMAX, THETA, PHI)
   END SUBROUTINE VSH_TOR_ALL_DP
 
 
-!     Compute all VSH_POL_UP (J=L+1 polar VSH) for 0<=l<=LMAX, -l<=m<=l
-!     sqrt(L/(2L+1))*PVSH_POL - sqrt((L+1)/(2L+1))*PVSH_RAD
-!     OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All \( J=\ell{+}1 \) standard-VSH members [[VSH_POL_UP]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
+!> pass: \( -\sqrt{(\ell{+}1)/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(-1)} +
+!> \sqrt{\ell/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Well-defined
+!> (nonzero) at \( \ell=0 \) -- see [[VSH_POL_UP]] for the dipole-ratio
+!> note at \( \ell=1 \).
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode axis
+!>   indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE VSH_POL_UP_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: L, M, NYLM, IDX
   REAL(KIND=dp)    :: SC_TH, SC_R
@@ -1132,13 +1627,24 @@ CONTAINS
   END SUBROUTINE VSH_POL_UP_ALL_DP
 
 
-!     Compute all VSH_POL_DN (J=L-1 polar VSH) for 0<=l<=LMAX, -l<=m<=l
-!     sqrt((L+1)/(2L+1))*PVSH_POL + sqrt(L/(2L+1))*PVSH_RAD
-!     Zero for l=0. OUT(c, YLM_INDEX(l,m)), c=1(r), 2(theta), 3(phi)
+!> All \( J=\ell{-}1 \) standard-VSH members [[VSH_POL_DN]] for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
+!> pass: \( \sqrt{\ell/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(-1)} +
+!> \sqrt{(\ell{+}1)/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Zero for
+!> \( \ell=0 \) -- see [[VSH_POL_DN]] for the dipole-ratio caveat at
+!> \( \ell=1 \).
+!>
+!> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
+!>   `1`=\(\hat r\), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode axis
+!>   indexed by [[YLM_INDEX]](l,m).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
   SUBROUTINE VSH_POL_DN_ALL_DP(OUT, LMAX, THETA, PHI)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN)  :: LMAX
-  REAL(KIND=dp),    INTENT(IN)  :: THETA, PHI
+  REAL(KIND=dp),    INTENT(IN)  :: THETA
+  REAL(KIND=dp),    INTENT(IN)  :: PHI
   COMPLEX(KIND=dp), INTENT(OUT) :: OUT(3,(LMAX+1)**2)
   INTEGER(KIND=i4) :: L, M, NYLM, IDX
   REAL(KIND=dp)    :: SC_TH, SC_R

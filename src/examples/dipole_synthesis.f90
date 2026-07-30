@@ -1,19 +1,21 @@
-!     Worked example (2a): synthesize the classic exterior vacuum magnetic
-!     dipole (l=1, m=0) from FORTVSH's poloidal basis functions and confirm
-!     (i) it reproduces the textbook closed form Br=2*MU*cos(theta)/r^3,
-!     Btheta=MU*sin(theta)/r^3, and (ii) it is numerically pure -- its
-!     overlap with every other l (at m=0) is zero to quadrature precision.
-!     No induction equation or time evolution is involved: this is a
-!     static field-synthesis and orthogonal-projection check only.
-!
-!     Poloidal decomposition used (derived directly from FORTVSH's own
-!     normalization, PVSH_RAD_r = Y_lm and PVSH_POL_theta = d(Y_lm)/dtheta
-!     / sqrt(l(l+1))):
-!       Br     = [l(l+1)/r^2] * S(r)      * PVSH_RAD(l,m,theta,phi)_r
-!       Btheta = [sqrt(l(l+1))/r] * dS/dr * PVSH_POL(l,m,theta,phi)_theta
-!     For l=1 this reproduces the exterior vacuum dipole with the radial
-!     stream function S(r) = C/r, C = MU / sqrt(3/(4*pi)).
-
+!> Worked example (2a): synthesize the classic exterior vacuum magnetic
+!> dipole (\( \ell=1,\,m=0 \)) from FORTVSH's poloidal basis functions and
+!> confirm (i) it reproduces the textbook closed form
+!> \( B_r=2\mu\cos\theta/r^3,\,B_\theta=\mu\sin\theta/r^3 \), and (ii) it
+!> is numerically pure -- its overlap with every other \( \ell \) (at
+!> \( m=0 \)) is zero to quadrature precision. No induction equation or
+!> time evolution is involved: this is a static field-synthesis and
+!> orthogonal-projection check only.
+!>
+!> Poloidal decomposition used (derived directly from FORTVSH's own
+!> normalization, [[PVSH_RAD]]'s radial component is \( Y_\ell^m \) and
+!> [[PVSH_POL]]'s \( \hat\theta \) component is
+!> \( \partial_\theta Y_\ell^m/\sqrt{\ell(\ell+1)} \)):
+!> $$ B_r = \frac{\ell(\ell+1)}{r^2}\,S(r)\,\mathrm{[[PVSH_RAD]]}(\ell,m,\theta,\phi)_r, $$
+!> $$ B_\theta = \frac{\sqrt{\ell(\ell+1)}}{r}\,\frac{dS}{dr}\,
+!>    \mathrm{[[PVSH_POL]]}(\ell,m,\theta,\phi)_\theta. $$
+!> For \( \ell=1 \) this reproduces the exterior vacuum dipole with the
+!> radial stream function \( S(r)=C/r,\,C=\mu/\sqrt{3/(4\pi)} \).
 PROGRAM DIPOLE_SYNTHESIS
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi

@@ -1,13 +1,14 @@
-!     Timing benchmarks comparing the batch (_ALL) Legendre/SSH/VSH
-!     routines against naive per-mode loops over the corresponding
-!     single-mode routines, evaluated across a grid of NX colatitude/
-!     argument points -- mirroring how a spectral MHD transform would
-!     call these routines once per grid point every timestep. Each
-!     measurement is auto-calibrated: the full grid sweep is repeated
-!     until elapsed wall time crosses MIN_TIME, so timings stay
-!     resolvable across the full Lmax sweep used for the manuscript's
-!     performance figure, without a hardcoded repeat count.
-
+!> Timing benchmarks comparing the batch (`_ALL`) Legendre/SSH/VSH
+!> routines against naive per-mode loops over the corresponding
+!> single-mode routines, evaluated across a grid of `NX` colatitude/
+!> argument points -- mirroring how a spectral MHD transform would call
+!> these routines once per grid point every timestep. Each measurement is
+!> auto-calibrated: the full grid sweep is repeated until elapsed wall
+!> time crosses [[BENCHMARK:MIN_TIME]], so timings stay resolvable across
+!> the full \( \ell_{max} \) sweep used for the manuscript's performance
+!> figure, without a hardcoded repeat count. Not part of `ctest` (opt-in
+!> `VSH_BUILD_BENCHMARK` CMake target instead) since wall-clock timings
+!> are machine/compiler-dependent and shouldn't gate a pass/fail build.
 MODULE BENCHMARK
 USE KINDS,   ONLY: dp, i4, i8
 USE GLOBALS, ONLY: pi
@@ -23,13 +24,22 @@ PUBLIC :: &
   BENCH_LEGENDRE, BENCH_SSH, &
   BENCH_VSH_TOR, BENCH_VSH_POL_UP, BENCH_VSH_POL_DN
 
+!> Minimum elapsed wall time (seconds) a calibration measurement must
+!> reach before its repeat count is accepted; below this, repeats double
+!> and the measurement is retried.
 REAL(KIND=dp),    PARAMETER :: MIN_TIME = 0.2_dp
+!> Safety cap on the repeat-count doubling loop, so a pathologically fast
+!> measurement can't spin forever.
 INTEGER(KIND=i4), PARAMETER :: NREP_CAP = 1000000
 
 CONTAINS
 
-!     Wall-clock seconds elapsed, via SYSTEM_CLOCK with an INTEGER(i8)
-!     count so the calibration loops below cannot roll the counter over.
+!> Wall-clock seconds elapsed, via `SYSTEM_CLOCK` with an `INTEGER(i8)`
+!> count so the calibration loops in every `BENCH_*` routine below cannot
+!> roll the counter over during a long-running sweep.
+!>
+!> Returns: Current wall-clock time in seconds (arbitrary origin -- only
+!>   differences between two calls are meaningful).
   FUNCTION WALL_TIME() RESULT(T)
   IMPLICIT NONE
   REAL(KIND=dp) :: T
@@ -39,13 +49,21 @@ CONTAINS
   RETURN
   END FUNCTION WALL_TIME
 
-!     Benchmark ASSOC_LEGENDRE_NORM_ALL (batch) vs. looped ASSOC_LEGENDRE
-!     (single-mode) for 0<=l<=lmax, 0<=m<=l, swept over NX points
-!     x in [-0.9,0.9]. Appends one row to OUTUNIT:
-!     LMAX  N_MODES  T_BATCH  T_LOOP  SPEEDUP
+!> Benchmarks [[ASSOC_LEGENDRE_NORM_ALL]] (batch) against looped
+!> [[ASSOC_LEGENDRE]] (single-mode) calls, for \( 0\le\ell\le\ell_{max},\,
+!> 0\le m\le\ell \), swept over `NX` points \( x\in[-0.9,0.9] \) (one grid
+!> sweep per timing, repeated/calibrated per [[WALL_TIME]]).
+!>
+!> @param LMAX Maximum degree benchmarked, \( \ell_{max}\ge0 \).
+!> @param NX Number of \( x \) points swept per timing measurement.
+!> @param OUTUNIT Fortran unit number to append one result row to:
+!>   `LMAX N_MODES T_BATCH T_LOOP SPEEDUP` (seconds per grid-point
+!>   evaluation).
   SUBROUTINE BENCH_LEGENDRE(LMAX, NX, OUTUNIT)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
   INTEGER(KIND=i4) :: L, M, IX, R, NREP, PSIZE
   REAL(KIND=dp) :: X, DX, T0, T1, T_BATCH, T_LOOP, ACC
   REAL(KIND=dp), ALLOCATABLE :: PNORM(:)
@@ -101,13 +119,20 @@ CONTAINS
   RETURN
   END SUBROUTINE BENCH_LEGENDRE
 
-!     Benchmark SSH_ALL (batch) vs. looped SSH (single-mode) for
-!     0<=l<=lmax, -l<=m<=l, swept over NX colatitude points in
-!     (0,pi) at a fixed longitude. Appends one row to OUTUNIT:
-!     LMAX  N_MODES  T_BATCH  T_LOOP  SPEEDUP
+!> Benchmarks [[SSH_ALL]] (batch) against looped [[SSH]] (single-mode)
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NX` colatitude points in \( (0,\pi) \) at a fixed longitude.
+!>
+!> @param LMAX Maximum degree benchmarked, \( \ell_{max}\ge0 \).
+!> @param NX Number of colatitude points swept per timing measurement.
+!> @param OUTUNIT Fortran unit number to append one result row to:
+!>   `LMAX N_MODES T_BATCH T_LOOP SPEEDUP` (seconds per grid-point
+!>   evaluation).
   SUBROUTINE BENCH_SSH(LMAX, NX, OUTUNIT)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
   INTEGER(KIND=i4) :: L, M, IX, R, NREP, NYLM
   REAL(KIND=dp) :: THETA, PHI, DTH, T0, T1, T_BATCH, T_LOOP
   COMPLEX(KIND=dp) :: ACC
@@ -163,12 +188,20 @@ CONTAINS
   RETURN
   END SUBROUTINE BENCH_SSH
 
-!     Benchmark VSH_TOR_ALL (batch) vs. looped VSH_TOR (single-mode)
-!     for 0<=l<=lmax, -l<=m<=l, swept over NX colatitude points.
-!     Appends one row to OUTUNIT: LMAX  N_MODES  T_BATCH  T_LOOP  SPEEDUP
+!> Benchmarks [[VSH_TOR_ALL]] (batch) against looped [[VSH_TOR]]
+!> (single-mode) calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell
+!> \), swept over `NX` colatitude points.
+!>
+!> @param LMAX Maximum degree benchmarked, \( \ell_{max}\ge0 \).
+!> @param NX Number of colatitude points swept per timing measurement.
+!> @param OUTUNIT Fortran unit number to append one result row to:
+!>   `LMAX N_MODES T_BATCH T_LOOP SPEEDUP` (seconds per grid-point
+!>   evaluation).
   SUBROUTINE BENCH_VSH_TOR(LMAX, NX, OUTUNIT)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
   INTEGER(KIND=i4) :: L, M, IX, R, NREP, NYLM
   REAL(KIND=dp) :: THETA, PHI, DTH, T0, T1, T_BATCH, T_LOOP
   COMPLEX(KIND=dp) :: ACC
@@ -224,13 +257,20 @@ CONTAINS
   RETURN
   END SUBROUTINE BENCH_VSH_TOR
 
-!     Benchmark VSH_POL_UP_ALL (batch) vs. looped VSH_POL_UP
-!     (single-mode) for 0<=l<=lmax, -l<=m<=l, swept over NX colatitude
-!     points. Appends one row to OUTUNIT:
-!     LMAX  N_MODES  T_BATCH  T_LOOP  SPEEDUP
+!> Benchmarks [[VSH_POL_UP_ALL]] (batch) against looped [[VSH_POL_UP]]
+!> (single-mode) calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell
+!> \), swept over `NX` colatitude points.
+!>
+!> @param LMAX Maximum degree benchmarked, \( \ell_{max}\ge0 \).
+!> @param NX Number of colatitude points swept per timing measurement.
+!> @param OUTUNIT Fortran unit number to append one result row to:
+!>   `LMAX N_MODES T_BATCH T_LOOP SPEEDUP` (seconds per grid-point
+!>   evaluation).
   SUBROUTINE BENCH_VSH_POL_UP(LMAX, NX, OUTUNIT)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
   INTEGER(KIND=i4) :: L, M, IX, R, NREP, NYLM
   REAL(KIND=dp) :: THETA, PHI, DTH, T0, T1, T_BATCH, T_LOOP
   COMPLEX(KIND=dp) :: ACC
@@ -286,13 +326,20 @@ CONTAINS
   RETURN
   END SUBROUTINE BENCH_VSH_POL_UP
 
-!     Benchmark VSH_POL_DN_ALL (batch) vs. looped VSH_POL_DN
-!     (single-mode) for 0<=l<=lmax, -l<=m<=l, swept over NX colatitude
-!     points. Appends one row to OUTUNIT:
-!     LMAX  N_MODES  T_BATCH  T_LOOP  SPEEDUP
+!> Benchmarks [[VSH_POL_DN_ALL]] (batch) against looped [[VSH_POL_DN]]
+!> (single-mode) calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell
+!> \), swept over `NX` colatitude points.
+!>
+!> @param LMAX Maximum degree benchmarked, \( \ell_{max}\ge0 \).
+!> @param NX Number of colatitude points swept per timing measurement.
+!> @param OUTUNIT Fortran unit number to append one result row to:
+!>   `LMAX N_MODES T_BATCH T_LOOP SPEEDUP` (seconds per grid-point
+!>   evaluation).
   SUBROUTINE BENCH_VSH_POL_DN(LMAX, NX, OUTUNIT)
   IMPLICIT NONE
-  INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
   INTEGER(KIND=i4) :: L, M, IX, R, NREP, NYLM
   REAL(KIND=dp) :: THETA, PHI, DTH, T0, T1, T_BATCH, T_LOOP
   COMPLEX(KIND=dp) :: ACC

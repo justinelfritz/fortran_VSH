@@ -1,32 +1,33 @@
-!     Worked example (2e): Geppert-Wiebicke (GWI/GWJ) coefficients swept
-!     across a range of mode-number combinations, each checked against
-!     an independent formula (not just the closed-form GWI/GWJ code
-!     itself evaluated a second way).
-!
-!     GWI check: GWI_DP's own formula,
-!       sqrt((2J1+1)(2J2+1)/(2L+1)/4pi) * CG(J1,0,J2,0,L,0) * CG(J1,M1,J2,M2,L,M)
-!     is algebraically the standard closed-form "Gaunt coefficient" --
-!     the textbook expression for the triple-scalar-harmonic integral
-!         GWI(J1,M1,J2,M2,L,M) = int Y_J1^M1 Y_J2^M2 conj(Y_L^M) dOmega
-!     This was verified numerically against direct 2D quadrature (SHGLQ
-!     in theta x uniform trapezoidal in phi, the same technique
-!     introduced in vsh_decomposition.f90) before writing this sweep,
-!     confirming the identification to ~1e-16 across several mode
-!     combinations, including a selection-rule-forbidden case that
-!     correctly evaluates to exactly zero on both sides.
-!
-!     GWJ check: GWJ's defining relationship is the coefficient in the
-!     expansion of a poloidal-toroidal VSH dot product in scalar
-!     harmonics (the same pattern src/tests.f90's TEST2_GW/TEST2_VSH
-!     already validate for one hardcoded case):
-!       DOT(PVSH_POL(J2,M2),PVSH_TOR(J1,M1))
-!         = -i/sqrt(J1(J1+1)*J2(J2+1)) * sum_L GWJ(J1,M1,J2,M2,L,M1+M2)*SSH(L,M1+M2)
-!     summed over L=|J1-J2|..J1+J2 (terms outside the valid triangle/
-!     parity range correctly evaluate to zero after the GWJ_DP guard
-!     fix). This is a pointwise identity (no integration needed) and was
-!     independently verified against several new mode combinations
-!     (beyond the one hardcoded in TEST2_GW) before writing this sweep.
-
+!> Worked example (2e): Geppert-Wiebicke ([[GWI]]/[[GWJ]]) coefficients
+!> swept across a range of mode-number combinations, each checked against
+!> an independent formula (not just the closed-form [[GWI]]/[[GWJ]] code
+!> itself evaluated a second way).
+!>
+!> **GWI check**: [[GWI]]'s own formula is algebraically the standard
+!> closed-form Gaunt coefficient -- the textbook expression for the
+!> triple-scalar-harmonic integral
+!> $$ I_{j_1m_1j_2m_2}^{\ell m} = \int Y_{j_1}^{m_1}Y_{j_2}^{m_2}
+!>    (Y_\ell^m)^{*}\,d\Omega. $$
+!> This was verified numerically against direct 2D quadrature ([[SHGLQ]]
+!> in \( \theta \) times uniform trapezoidal in \( \phi \), the same
+!> technique introduced in `vsh_decomposition.f90`) before writing this
+!> sweep, confirming the identification to \( \sim10^{-16} \) across
+!> several mode combinations, including a selection-rule-forbidden case
+!> that correctly evaluates to exactly zero on both sides.
+!>
+!> **GWJ check**: [[GWJ]]'s defining relationship is the coefficient in
+!> the expansion of a poloidal-toroidal VSH dot product in scalar
+!> harmonics (the same pattern `src/tests.f90`'s `TEST2_GW`/`TEST2_VSH`
+!> already validate for one hardcoded case):
+!> $$ \mathrm{[[PVSH_POL]]}(j_2,m_2)\cdot\mathrm{[[PVSH_TOR]]}(j_1,m_1) =
+!>    \frac{-i}{\sqrt{j_1(j_1{+}1)j_2(j_2{+}1)}}\sum_\ell
+!>    J_{j_1m_1j_2m_2}^{\ell,m_1+m_2}\,Y_\ell^{m_1+m_2}, $$
+!> summed over \( \ell=|j_1-j_2|\ldots j_1{+}j_2 \) (terms outside the
+!> valid triangle/parity range correctly evaluate to zero after the
+!> [[GWJ]] guard fix). This is a pointwise identity (no integration
+!> needed) and was independently verified against several new mode
+!> combinations (beyond the one hardcoded in `TEST2_GW`) before writing
+!> this sweep.
 PROGRAM GWI_GWJ_SWEEP
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi, j
@@ -57,8 +58,13 @@ END IF
 
 CONTAINS
 
-!     GWI vs. the brute-force Gaunt-coefficient integral, swept over
-!     J1,J2=0..JMAX, all valid M1,M2,L,M.
+!> [[GWI]] vs. the brute-force Gaunt-coefficient integral (via [[SHGLQ]]
+!> theta-quadrature times a uniform phi sum), swept over
+!> \( j_1,j_2=0\ldots\)`JMAX`, all valid \( m_1,m_2,\ell,m \). Writes
+!> `examples/gwi_gwj_sweep/gwi_check.dat`.
+!>
+!> @param N_FAIL Running failure counter, incremented if the max error
+!>   across the sweep exceeds `TOL`.
   SUBROUTINE RUN_GWI_SWEEP(N_FAIL)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(INOUT) :: N_FAIL
@@ -114,8 +120,13 @@ CONTAINS
   END IF
   END SUBROUTINE RUN_GWI_SWEEP
 
-!     GWJ vs. the DOT(PVSH_POL,PVSH_TOR) pointwise identity, swept over
-!     J1,J2=0..JMAX, all valid M1,M2, at N_POINTS fixed (theta,phi).
+!> [[GWJ]] vs. the \( \mathrm{[[PVSH_POL]]}\cdot\mathrm{[[PVSH_TOR]]} \)
+!> pointwise identity, swept over \( j_1,j_2=0\ldots\)`JMAX`, all valid
+!> \( m_1,m_2 \), at `N_POINTS` fixed \( (\theta,\phi) \). Writes
+!> `examples/gwi_gwj_sweep/gwj_check.dat`.
+!>
+!> @param N_FAIL Running failure counter, incremented if the max error
+!>   across the sweep exceeds `TOL`.
   SUBROUTINE RUN_GWJ_SWEEP(N_FAIL)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(INOUT) :: N_FAIL

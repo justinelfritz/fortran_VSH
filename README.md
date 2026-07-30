@@ -355,3 +355,17 @@ Each file has columns `LMAX  N_MODES  T_BATCH_sec  T_LOOP_sec  SPEEDUP`,
 one row per `Lmax` in `{5, 10, 20, 40, 80, 160, 320}`, timed per grid-point
 evaluation over a 50-point sweep in the routine's natural argument
 (colatitude, or `x=cos(theta)` for the Legendre case).
+
+## API documentation
+
+Full HTML API documentation — every routine's governing equation,
+argument-by-argument description, and cross-referenced call graph — is
+generated from the source with [FORD](https://forddocs.readthedocs.io/):
+
+```bash
+pip install ford
+ford project.md
+```
+
+Open `docs/index.html` in a browser. The generated `docs/` directory is
+not committed; regenerate it after pulling source changes.

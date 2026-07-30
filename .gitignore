@@ -17,6 +17,9 @@ CTestTestfile.cmake
 # Generated test output (reference copies live in validation/reference/)
 /validation/*.dat
 
+# Generated FORD API documentation (regenerate with: ford project.md)
+/docs/
+
 
 
 
