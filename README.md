@@ -1,5 +1,7 @@
 # FORTVSH
 
+[![CI](https://github.com/justinelfritz/FORTVSH/actions/workflows/ci.yml/badge.svg)](https://github.com/justinelfritz/FORTVSH/actions/workflows/ci.yml)
+
 Fortran library for Legendre polynomials and derivatives, scalar spherical
 harmonics (SSH) and angular derivatives, vector spherical harmonics (VSH)
 and angular derivatives, Clebsch-Gordan and Wigner 3j coefficients, and
