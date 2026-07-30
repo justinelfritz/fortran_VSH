@@ -11,6 +11,54 @@ PATCH for bug fixes · MINOR for new API additions · MAJOR for breaking changes
 
 ---
 
+## [0.3.0] — 2026-07-30
+
+### Added
+- FORD ([forddocs.readthedocs.io](https://forddocs.readthedocs.io/)) HTML API
+  documentation: `project.md` project file plus full `!>`-style docstrings
+  (LaTeX-rendered governing equations, per-argument descriptions, and
+  cross-references) across every public routine in `vsh.f90`, `tests.f90`,
+  `benchmark.f90`, and the five example programs. Build via
+  `pip install ford && ford project.md`; the generated `docs/` output is not
+  committed.
+- `VSH_BUILD_BENCHMARK` CMake option (default `OFF`): builds `vsh_benchmark`
+  (`src/benchmark.f90` + `src/bench_main.f90`), timing every batch (`_ALL`)
+  routine against a naive per-mode loop across a sweep of `Lmax`, with each
+  measurement auto-calibrated against wall-clock time. Not part of `ctest`
+  (timings are machine/compiler-dependent) — a manually-run target writing to
+  `benchmark/`.
+- `VSH_BUILD_EXAMPLES` CMake option (default `OFF`): builds five worked-example
+  executables under `src/examples/`: `dipole_synthesis`,
+  `dipole_uniform_sphere`, and `dipole_flux_expulsion` (a static poloidal-dipole
+  magnetostatics progression — field synthesis and mode-purity check,
+  uniformly-magnetized-sphere boundary matching, and idealized
+  superconducting-core flux expulsion), `gwi_gwj_sweep` (Geppert-Wiebicke
+  coupling-coefficient validation across swept parameter ranges), and
+  `vsh_decomposition` (arbitrary-field VSH spectral decomposition,
+  reconstruction, and convergence — the first routine in the repo to exercise
+  `SHGLQ`). Each prints its own `PASS`/`FAIL` self-check and writes to
+  `examples/<name>/`.
+- `py/plotstyle.py`: shared matplotlib styling (validated colorblind-safe
+  palette) used by all new plotting scripts, plus `py/plot_benchmark.py` and
+  one `py/plot_*.py` script per new example, feeding figures into the
+  accompanying manuscript.
+
+### Fixed
+- `GWJ_DP`: guarded a previously-unguarded `sqrt()` term that could go
+  negative (producing `NaN`, or crashing under `-ffpe-trap` builds) for
+  out-of-range `(J1,J2,L)` mode triples, matching the triangle-inequality
+  guard `CGCOEFF` already had. Purely additive — identical results for every
+  previously-valid input.
+- Split ~62 grouped dummy-argument declarations (e.g.
+  `INTEGER, INTENT(IN) :: L, K`) into one variable per line throughout
+  `vsh.f90`, `tests.f90`, `benchmark.f90`, and `vsh_decomposition.f90`. Works
+  around a FORD bug where grouped declarations caused each variable's
+  generated documentation to accumulate the descriptions of all preceding
+  variables in the same group. Pure declaration-syntax change — no behavior
+  change.
+
+---
+
 ## [0.2.0] — 2026-06-06
 
 ### Added
