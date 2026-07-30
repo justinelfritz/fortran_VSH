@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gfortran cmake pkg-config python3
+          gfortran --version
+          cmake --version
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DVSH_BUILD_SHARED=ON \
+            -DVSH_BUILD_BENCHMARK=ON \
+            -DVSH_BUILD_EXAMPLES=ON \
+            -DVSH_REGRESSION_TEST=ON \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install-test"
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test (vsh_validation + vsh_regression)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run worked examples
+        run: |
+          set -e
+          for ex in dipole_synthesis dipole_uniform_sphere dipole_flux_expulsion \
+                    gwi_gwj_sweep vsh_decomposition; do
+            echo "=== $ex ==="
+            ./build/"$ex"
+          done
+
+      - name: Run benchmark
+        run: |
+          # Timings on shared runners are noisy and not meaningful -- this
+          # step only confirms the batch-vs-loop benchmark suite builds and
+          # completes without crashing. See benchmark/*.dat (uploaded below)
+          # for the actual numbers, e.g. for eyeballing trends over time.
+          ./build/vsh_benchmark
+
+      - name: Upload benchmark output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-dat-files
+          path: benchmark/*.dat
+          if-no-files-found: ignore
+
+      - name: Install
+        run: cmake --install build
+
+      - name: Check pkg-config
+        run: |
+          export PKG_CONFIG_PATH="${{ github.workspace }}/install-test/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          pkg-config --exists fortvsh
+          echo "cflags: $(pkg-config --cflags fortvsh)"
+          echo "libs:   $(pkg-config --libs fortvsh)"
+
+      - name: find_package(FORTVSH) downstream consumer smoke test
+        run: |
+          set -e
+          mkdir -p /tmp/fortvsh-consumer
+          cat > /tmp/fortvsh-consumer/CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer Fortran)
+          find_package(FORTVSH REQUIRED)
+          add_executable(consumer_test main.f90)
+          target_link_libraries(consumer_test PRIVATE FORTVSH::vsh)
+          EOF
+          cat > /tmp/fortvsh-consumer/main.f90 << 'EOF'
+          PROGRAM CONSUMER_TEST
+          USE KINDS, ONLY: dp, i4
+          USE VSH,   ONLY: SSH
+          IMPLICIT NONE
+          COMPLEX(KIND=dp) :: Y
+          Y = SSH(1_i4, 0_i4, 0.5_dp, 0.3_dp)
+          PRINT *, "Y_1^0(0.5,0.3) =", Y
+          END PROGRAM CONSUMER_TEST
+          EOF
+          cmake -S /tmp/fortvsh-consumer -B /tmp/fortvsh-consumer/build \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install-test"
+          cmake --build /tmp/fortvsh-consumer/build
+          /tmp/fortvsh-consumer/build/consumer_test
