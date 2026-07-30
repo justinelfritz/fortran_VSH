@@ -739,11 +739,21 @@ CONTAINS
   FUNCTION GWJ_DP(J1,M1,J2,M2,L,M) RESULT(GWJ)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: J1,M1,J2,M2,L,M
+  REAL(KIND=dp) :: TRIANGLE_ARG
   COMPLEX(KIND=dp) :: GWJ
+  ! Guard the sqrt() argument below the same way CGCOEFF guards its own
+  ! triangle inequality: this product is negative outside the valid
+  ! (J1+1,J2,L) triangle range, which would otherwise silently produce
+  ! NaN (or trap under -ffpe-trap builds) instead of the correct zero.
+  TRIANGLE_ARG = (J1+J2+L+2.d0)*(J2+L-J1)* &
+    (J1+J2-L+1.d0)*(J1-J2+L+1.d0)
+  IF (TRIANGLE_ARG < 0.d0) THEN
+    GWJ = DCMPLX(0.d0, 0.d0)
+    RETURN
+  END IF
   GWJ=-DSQRT((2.d0*J1+1.d0)*(2.d0*J2+1.d0)/(2.d0*L+1.d0)/4.d0/pi)* &
     CGCOEFF(J1+1,0,J2,0,L,0)*CGCOEFF(J1,M1,J2,M2,L,M)* &
-    DCMPLX(0.d0, 1.d0)*DSQRT((J1+J2+L+2.d0)*(J2+L-J1)* &
-    (J1+J2-L+1.d0)*(J1-J2+L+1.d0))/2.d0
+    DCMPLX(0.d0, 1.d0)*DSQRT(TRIANGLE_ARG)/2.d0
   RETURN
   END FUNCTION GWJ_DP
 
