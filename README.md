@@ -362,7 +362,11 @@ evaluation over a 50-point sweep in the routine's natural argument
 
 Full HTML API documentation — every routine's governing equation,
 argument-by-argument description, and cross-referenced call graph — is
-generated from the source with [FORD](https://forddocs.readthedocs.io/):
+generated from the source with [FORD](https://forddocs.readthedocs.io/) and
+published at **<https://justinelfritz.github.io/FORTVSH/>** on every push to
+`master` (`.github/workflows/docs.yml`).
+
+To build it locally instead:
 
 ```bash
 pip install ford
