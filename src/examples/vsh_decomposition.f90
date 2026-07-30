@@ -1,32 +1,31 @@
-!     Worked example (2d): arbitrary-field VSH spectral decomposition,
-!     reconstruction, and convergence.
-!
-!     Demonstrates the manuscript Introduction's own claim that VSH
-!     "constitute a complete orthonormal basis" enabling "spectral
-!     expansion of MHD vector fields with arbitrary angular
-!     configuration" -- using a genuine 2D (theta,phi) numerical
-!     quadrature built from SHGLQ (Gauss-Legendre in x=cos(theta), exact
-!     for the polynomial degrees involved here) times a uniform
-!     trapezoidal sum in phi (spectrally exact for finite Fourier
-!     content). SHGLQ is defined in the library but was not called
-!     anywhere before this example.
-!
-!     Part A: a field built from equal unit coefficients on exactly the
-!     eight modes (l,m) = (1,-1),(1,0),(1,1),(2,-2),(2,-1),(2,0),(2,1),
-!     (2,2), applied to all three basis families (radial, poloidal,
-!     toroidal). Decompose and confirm the recovered coefficients equal
-!     1 at those eight modes and ~0 (quadrature floor) everywhere else --
-!     the first genuinely non-axisymmetric (m/=0) purity check in this
-!     repository (the dipole examples are all m=0).
-!
-!     Part B: a smooth field with effectively unbounded spectral content
-!     (a Gaussian angular bump with slight phi modulation) is
-!     reconstructed at increasing Lmax, and the reconstruction error
-!     (checked against the true closed-form field on an independent
-!     evaluation grid, not the quadrature grid) is shown to shrink as
-!     more modes are retained -- the classic spectral truncation
-!     convergence curve.
-
+!> Worked example (2d): arbitrary-field VSH spectral decomposition,
+!> reconstruction, and convergence.
+!>
+!> Demonstrates the manuscript Introduction's own claim that VSH
+!> "constitute a complete orthonormal basis" enabling "spectral expansion
+!> of MHD vector fields with arbitrary angular configuration" -- using a
+!> genuine 2D \( (\theta,\phi) \) numerical quadrature built from
+!> [[SHGLQ]] (Gauss-Legendre in \( x=\cos\theta \), exact for the
+!> polynomial degrees involved here) times a uniform trapezoidal sum in
+!> \( \phi \) (spectrally exact for finite Fourier content). [[SHGLQ]] is
+!> defined in the library but was not called anywhere before this
+!> example.
+!>
+!> **Part A**: a field built from equal unit coefficients on exactly the
+!> eight modes \( (\ell,m) = (1,{-}1),(1,0),(1,1),(2,{-}2),(2,{-}1),(2,0),
+!> (2,1),(2,2) \), applied to all three basis families (radial, poloidal,
+!> toroidal). [[DECOMPOSE]] and confirm the recovered coefficients equal
+!> 1 at those eight modes and \( \sim0 \) (quadrature floor) everywhere
+!> else -- the first genuinely non-axisymmetric (\( m\ne0 \)) purity
+!> check in this repository (the dipole examples are all \( m=0 \)).
+!>
+!> **Part B**: a smooth field with effectively unbounded spectral content
+!> (a Gaussian angular bump with slight \( \phi \) modulation) is
+!> reconstructed at increasing \( \ell_{max} \), and the reconstruction
+!> error (checked against the true closed-form field on an independent
+!> evaluation grid, not the quadrature grid) is shown to shrink as more
+!> modes are retained -- the classic spectral truncation convergence
+!> curve.
 PROGRAM VSH_DECOMPOSITION
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi
@@ -61,9 +60,14 @@ END IF
 
 CONTAINS
 
-!     Target field for Part A: equal unit weight on all three basis
-!     families at each of the eight known modes; zero elsewhere. A
-!     genuine finite sum over eight independent modes, not a shortcut.
+!> Target field for Part A: equal unit weight on all three basis families
+!> at each of the eight known modes; zero elsewhere. A genuine finite sum
+!> over eight independent modes, not a shortcut.
+!>
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: The target vector field \( \mathbf{F}(\theta,\phi) \), complex
+!>   3-vector.
   FUNCTION FIELD_KNOWN(THETA, PHI) RESULT(F)
   IMPLICIT NONE
   REAL(KIND=dp), INTENT(IN) :: THETA, PHI
@@ -77,22 +81,29 @@ CONTAINS
   ENDDO
   END FUNCTION FIELD_KNOWN
 
-!     Target field for Part B: a smooth angular Gaussian bump with slight
-!     phi modulation (carries m=0 and m=+/-1 content, on top of
-!     effectively unbounded l content from the Gaussian profile in
-!     theta). Purely radial, for simplicity.
-!
-!     The phi modulation is weighted by sin(theta) so the field stays
-!     single-valued at the poles: at theta=0 (or pi), every phi maps to
-!     the same physical point, so any legitimate smooth field must be
-!     phi-independent there. An earlier version of this field used a
-!     bare cos(phi) term with no such weighting -- it was multi-valued
-!     at the pole (1.5 approaching along phi=0, 0.5 along phi=pi), and
-!     no finite spherical harmonic series can converge to a discontinuous
-!     function; the reconstruction error plateaued at exactly 0.5 (the
-!     size of the discontinuity) instead of shrinking with Lmax. Caught
-!     by comparing this driver's convergence curve against an isolated,
-!     single-Lmax reconstruction check, which did not show the plateau.
+!> Target field for Part B: a smooth angular Gaussian bump with slight
+!> \( \phi \) modulation (carries \( m=0 \) and \( m=\pm1 \) content, on
+!> top of effectively unbounded \( \ell \) content from the Gaussian
+!> profile in \( \theta \)). Purely radial, for simplicity.
+!>
+!> @note The \( \phi \) modulation is weighted by \( \sin\theta \) so the
+!>   field stays single-valued at the poles: at \( \theta=0 \) (or
+!>   \( \pi \)), every \( \phi \) maps to the same physical point, so any
+!>   legitimate smooth field must be \( \phi \)-independent there. An
+!>   earlier version of this field used a bare \( \cos\phi \) term with no
+!>   such weighting -- it was multi-valued at the pole (1.5 approaching
+!>   along \( \phi=0 \), 0.5 along \( \phi=\pi \)), and no finite
+!>   spherical harmonic series can converge to a discontinuous function;
+!>   the reconstruction error plateaued at exactly 0.5 (the size of the
+!>   discontinuity) instead of shrinking with \( \ell_{max} \). Caught by
+!>   comparing this driver's convergence curve against an isolated,
+!>   single-\( \ell_{max} \) reconstruction check, which did not show the
+!>   plateau.
+!>
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: The target vector field \( \mathbf{F}(\theta,\phi) \), complex
+!>   3-vector (purely radial).
   FUNCTION FIELD_GAUSSIAN(THETA, PHI) RESULT(F)
   IMPLICIT NONE
   REAL(KIND=dp), INTENT(IN) :: THETA, PHI
@@ -105,10 +116,26 @@ CONTAINS
   F(3) = DCMPLX(0.d0, 0.d0)
   END FUNCTION FIELD_GAUSSIAN
 
-!     Decompose FIELD_FN into (a_rad,a_pol,a_tor) for 0<=l<=LMAX,
-!     -l<=m<=l, via 2D Gauss-Legendre(theta) x uniform-trapezoidal(phi)
-!     quadrature. LMAX_QUAD sets the theta quadrature order (LMAX_QUAD+1
-!     nodes); NPHI sets the number of phi points.
+!> Decomposes `FIELD_FN` into \( (a_{rad},a_{pol},a_{tor}) \) for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), via 2D
+!> Gauss-Legendre(\( \theta \)) times uniform-trapezoidal(\( \phi \))
+!> quadrature:
+!> $$ a_{rad}(\ell,m) = \sum_{quad} \mathbf{F}(\theta,\phi)\cdot
+!>    \mathrm{[[PVSH_RAD]]}(\ell,m,\theta,\phi)^{*}\,w_\theta\,w_\phi $$
+!> (and similarly for \( a_{pol},a_{tor} \) against [[PVSH_POL]] and
+!> [[PVSH_TOR]]), using the batch `_ALL` routines so every mode at a
+!> quadrature point comes from one call.
+!>
+!> @param FIELD_FN Target field function, `(theta,phi) -> COMPLEX(3)`.
+!> @param LMAX Maximum degree to decompose, \( \ell_{max}\ge0 \).
+!> @param LMAX_QUAD Theta-quadrature order ([[SHGLQ]] uses `LMAX_QUAD+1`
+!>   nodes); must scale with `LMAX` for an accurate result (see
+!>   [[RUN_PART_B]] for how the caller picks it).
+!> @param NPHI Number of uniform phi-quadrature points.
+!> @param A_RAD Output radial coefficients, size `(LMAX+1)**2`, indexed by
+!>   [[YLM_INDEX]](l,m).
+!> @param A_POL Output poloidal coefficients, same size/indexing.
+!> @param A_TOR Output toroidal coefficients, same size/indexing.
   SUBROUTINE DECOMPOSE(FIELD_FN, LMAX, LMAX_QUAD, NPHI, A_RAD, A_POL, A_TOR)
   IMPLICIT NONE
   INTERFACE
@@ -158,7 +185,21 @@ CONTAINS
   DEALLOCATE(ZERO, WTHETA, RADALL, POLALL, TORALL)
   END SUBROUTINE DECOMPOSE
 
-!     Reconstruct the field at (THETA,PHI) from coefficients up to LMAX.
+!> Reconstructs the field at \( (\theta,\phi) \) from coefficients up to
+!> `LMAX`: \( \mathbf{F}\approx\sum_{\ell,m}
+!> a_{rad}\,\mathrm{[[PVSH_RAD]]}+a_{pol}\,\mathrm{[[PVSH_POL]]}+
+!> a_{tor}\,\mathrm{[[PVSH_TOR]]} \), the inverse of [[DECOMPOSE]].
+!>
+!> @param LMAX Maximum degree retained, \( \ell_{max}\ge0 \) (must match
+!>   the coefficient arrays' size).
+!> @param A_RAD Radial coefficients from [[DECOMPOSE]], size
+!>   `(LMAX+1)**2`.
+!> @param A_POL Poloidal coefficients from [[DECOMPOSE]], same size.
+!> @param A_TOR Toroidal coefficients from [[DECOMPOSE]], same size.
+!> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Longitude in radians, \( 0\le\phi<2\pi \).
+!> Returns: Reconstructed field \( \mathbf{F}(\theta,\phi) \), complex
+!>   3-vector.
   FUNCTION RECONSTRUCT(LMAX, A_RAD, A_POL, A_TOR, THETA, PHI) RESULT(F)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX
@@ -182,8 +223,12 @@ CONTAINS
   DEALLOCATE(RADALL, POLALL, TORALL)
   END FUNCTION RECONSTRUCT
 
-!     Part A: decompose FIELD_KNOWN, confirm exact recovery of the eight
-!     known unit coefficients and near-zero everywhere else.
+!> Part A: [[DECOMPOSE]] [[FIELD_KNOWN]], confirm exact recovery of the
+!> eight known unit coefficients and near-zero everywhere else. Writes
+!> `examples/vsh_decomposition/known_modes.dat`.
+!>
+!> @param N_FAIL Running failure counter, incremented if the max
+!>   coefficient error exceeds `TOL_A`.
   SUBROUTINE RUN_PART_A(N_FAIL)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(INOUT) :: N_FAIL
@@ -224,12 +269,17 @@ CONTAINS
   END IF
   END SUBROUTINE RUN_PART_A
 
-!     Part B: decompose+reconstruct FIELD_GAUSSIAN at increasing Lmax,
-!     tracking max reconstruction error against the true closed-form
-!     field on an independent evaluation grid. Self-check: error at the
-!     largest Lmax must be much smaller than at the smallest (genuine
-!     convergence, not a flat/noisy curve -- which would indicate a
-!     quadrature-order-vs-Lmax scaling bug).
+!> Part B: [[DECOMPOSE]]+[[RECONSTRUCT]] [[FIELD_GAUSSIAN]] at increasing
+!> \( \ell_{max} \) (quadrature order scaled with each: `LMAX_QUAD =
+!> 3*LMAX_TEST+10`, `NPHI = 4*LMAX_TEST+16`), tracking max reconstruction
+!> error against the true closed-form field on an independent evaluation
+!> grid. Self-check: error at the largest \( \ell_{max} \) must be much
+!> smaller than at the smallest (genuine convergence, not a flat/noisy
+!> curve -- which would indicate a quadrature-order-vs-\( \ell_{max} \)
+!> scaling bug). Writes `examples/vsh_decomposition/convergence.dat`.
+!>
+!> @param N_FAIL Running failure counter, incremented if the error at the
+!>   largest \( \ell_{max} \) is not far smaller than at the smallest.
   SUBROUTINE RUN_PART_B(N_FAIL)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(INOUT) :: N_FAIL

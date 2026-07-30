@@ -1,5 +1,9 @@
-
-
+!> Driver for the full [[TESTS]] validation suite (run via `ctest`, target
+!> `vsh_validation`): runs every cross-validation, batch-consistency, and
+!> identity check in [[TESTS]], writes each one's full per-point data to
+!> `./validation/*.dat`, prints a `PASS`/`FAIL` line per check, and exits
+!> non-zero if any check failed (the signal `ctest` uses for a
+!> pass/fail build gate).
 PROGRAM MAIN
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi

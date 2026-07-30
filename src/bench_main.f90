@@ -1,5 +1,8 @@
-
-
+!> Driver for the [[BENCHMARK]] suite (opt-in `VSH_BUILD_BENCHMARK` CMake
+!> target, not part of `ctest`): runs every `BENCH_*` routine across a
+!> fixed sweep of \( \ell_{max} \) values, writing one row per
+!> \( \ell_{max} \) to `./benchmark/bench_*.dat` (consumed by
+!> `py/plot_benchmark.py` for the manuscript's performance figure).
 PROGRAM BENCH_MAIN
 USE KINDS,     ONLY: i4
 USE BENCHMARK, ONLY: &

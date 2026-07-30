@@ -1,21 +1,20 @@
-!     Worked example (2b): uniformly magnetized sphere <-> exterior dipole.
-!     Classic textbook magnetostatic boundary-value problem (e.g. Griffiths
-!     Ex. 6.1 / Jackson): a sphere of radius R with uniform magnetization
-!     has a genuinely uniform interior field and a pure exterior dipole
-!     field. In the normalized units used here (mu_0/4*pi = 1, i.e.
-!     Br_exterior = 2*MU*cos(theta)/r^3), the magnetic-scalar-potential
-!     solution gives the closed-form relation
-!         B0 (interior uniform field) = 2*MU/R^3
-!     Because there is no free surface current in this relation's
-!     derivation but the interior/exterior fields are NOT continuous in
-!     Btheta (physically: continuity is broken by the sphere's own bound
-!     magnetization surface current, K = M x n-hat) -- Br IS continuous at
-!     r=R, but Btheta has a jump. Both are checked below using FORTVSH's
-!     PVSH_RAD/PVSH_POL evaluated with the interior (S_in=A*r^2, uniform
-!     field) and exterior (S_out=C/r, dipole) stream functions.
-!     Purely static/magnetostatic: no induction equation, no time
-!     evolution.
-
+!> Worked example (2b): uniformly magnetized sphere \( \leftrightarrow \)
+!> exterior dipole. Classic textbook magnetostatic boundary-value problem
+!> (e.g. Griffiths Ex. 6.1 / Jackson): a sphere of radius \( R \) with
+!> uniform magnetization has a genuinely uniform interior field and a
+!> pure exterior dipole field. In the normalized units used here
+!> (\( \mu_0/4\pi=1 \), i.e. \( B_{r,ext}=2\mu\cos\theta/r^3 \)), the
+!> magnetic-scalar-potential solution gives the closed-form relation
+!> \( B_0\,(\text{interior uniform field}) = 2\mu/R^3 \). Because there
+!> is no free surface current in this relation's derivation but the
+!> interior/exterior fields are *not* continuous in \( B_\theta \)
+!> (physically: continuity is broken by the sphere's own bound
+!> magnetization surface current, \( \mathbf{K}=\mathbf{M}\times\hat n
+!> \)) -- \( B_r \) *is* continuous at \( r=R \), but \( B_\theta \) has a
+!> jump. Both are checked below using FORTVSH's [[PVSH_RAD]]/[[PVSH_POL]]
+!> evaluated with the interior (\( S_{in}=Ar^2 \), uniform field) and
+!> exterior (\( S_{out}=C/r \), dipole) stream functions. Purely
+!> static/magnetostatic: no induction equation, no time evolution.
 PROGRAM DIPOLE_UNIFORM_SPHERE
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi

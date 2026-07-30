@@ -1,6 +1,27 @@
-!     Functions designed to test numerical results
-!     of VSH module functions
-
+!> The numerical validation suite backing FORTVSH's accuracy claims (see
+!> the "Numerical Validation" appendix of the accompanying manuscript).
+!> Three families of checks:
+!>
+!> 1. **Cross-validation** ([[TEST1_ANALYTIC]]/[[TEST1_VSH]]/[[TEST1_GW]]
+!>    and their `TEST2_*` counterparts): the same closed-form quantity
+!>    computed three independent ways -- a hand-derived analytic formula,
+!>    a direct [[DOT]] product of VSH values, and the
+!>    [[GWI]]/[[GWJ]]-coefficient expansion -- must agree to machine
+!>    precision.
+!> 2. **Batch consistency** (`BATCH_*_CONS`): every `_ALL` batch routine
+!>    must agree pointwise with its single-mode counterpart, looped over
+!>    the same \( (\ell,m) \) range.
+!> 3. **Mathematical identities** ([[SSH_ORTHO]],
+!>    [[PVSH_POL_TOR_ORTHO]], [[VSH_POL_INVERSION]]): orthonormality,
+!>    orthogonality, and the [[VSH_POL_UP]]/[[VSH_POL_DN]] rotation back
+!>    to [[PVSH_POL]]/[[PVSH_RAD]], each checked against its known exact
+!>    value.
+!>
+!> Every `_CONS`/`_ORTHO`/`_INVERSION` routine returns a `STATUS` (0 =
+!> pass, 1 = fail against its stated tolerance) and writes its full
+!> per-point data to `OUTUNIT`, driven from `src/main.f90` -- the same
+!> data that feeds the manuscript's convergence figures via
+!> `py/compute_validation.py`.
 MODULE TESTS
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi, j
@@ -33,7 +54,12 @@ PUBLIC :: &
 
 CONTAINS
 
-!  Analytic result for Test 1
+!> Hand-derived closed form for Test 1's target quantity (a specific
+!> product of VSH inner products), evaluated over a colatitude grid at
+!> \( \phi=0 \) for comparison against [[TEST1_VSH]] and [[TEST1_GW]].
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, the analytic Test 1 values.
   FUNCTION TEST1_ANALYTIC(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -49,7 +75,13 @@ CONTAINS
   RETURN
   END FUNCTION TEST1_ANALYTIC
 
-!  Numerical result for Test 1 from VSH inner products
+!> Test 1's target quantity computed directly from [[DOT]] products of
+!> [[VSH_TOR]]/[[VSH_POL_DN]]/[[VSH_POL_UP]] values -- must agree with
+!> [[TEST1_ANALYTIC]] to machine precision.
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, matching [[TEST1_ANALYTIC]]'s
+!>   grid.
   FUNCTION TEST1_VSH(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -66,7 +98,15 @@ CONTAINS
   RETURN
   END FUNCTION TEST1_VSH
 
-!  Numerical result for Test 1 from Geppert & Wiebicke forms
+!> Test 1's target quantity computed via the [[GWI]]-coefficient expansion
+!> in scalar spherical harmonics, rather than direct VSH [[DOT]] products
+!> -- must agree with [[TEST1_ANALYTIC]] and [[TEST1_VSH]] to machine
+!> precision. This is the check that specifically exercises [[GWI]] (see
+!> also [[TEST2_GW]] for the [[GWJ]] counterpart).
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, matching [[TEST1_ANALYTIC]]'s
+!>   grid.
   FUNCTION TEST1_GW(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -93,7 +133,13 @@ CONTAINS
   RETURN
   END FUNCTION TEST1_GW
 
-!  Analytic result for Test 2
+!> Hand-derived closed form for Test 2's target quantity (a different
+!> product of VSH inner products than Test 1, with nonzero \( m \)
+!> content), evaluated over a colatitude grid at a fixed \( \phi \) for
+!> comparison against [[TEST2_VSH]] and [[TEST2_GW]].
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, the analytic Test 2 values.
   FUNCTION TEST2_ANALYTIC(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -110,7 +156,13 @@ CONTAINS
   RETURN
   END FUNCTION TEST2_ANALYTIC
 
-!  Numerical result for Test 2 from VSH inner products
+!> Test 2's target quantity computed directly from [[DOT]] products of
+!> [[PVSH_POL]]/[[PVSH_TOR]]/[[PVSH_RAD]] values -- must agree with
+!> [[TEST2_ANALYTIC]] to machine precision.
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, matching [[TEST2_ANALYTIC]]'s
+!>   grid.
   FUNCTION TEST2_VSH(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -127,7 +179,14 @@ CONTAINS
   RETURN
   END FUNCTION TEST2_VSH
 
-!  Numerical result for Test 2 from Geppert & Wiebicke forms
+!> Test 2's target quantity computed via the [[GWJ]]-coefficient expansion
+!> (combined with a [[GWI]] term) in scalar spherical harmonics -- must
+!> agree with [[TEST2_ANALYTIC]] and [[TEST2_VSH]] to machine precision.
+!> This is the check that specifically exercises [[GWJ]].
+!>
+!> @param NTH Number of colatitude samples over \( [0,\pi] \).
+!> Returns: Complex array of size `NTH`, matching [[TEST2_ANALYTIC]]'s
+!>   grid.
   FUNCTION TEST2_GW(NTH)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: NTH
@@ -155,8 +214,19 @@ CONTAINS
   END FUNCTION TEST2_GW
 
 
-  !  Test ASSOC_LEGENDRE_ALL against individual ASSOC_LEGENDRE calls
-  !  Columns: L  M  X  P_batch  P_single  abs_diff
+!> Batch-consistency check: [[ASSOC_LEGENDRE_ALL]] vs. looped
+!> [[ASSOC_LEGENDRE]] calls, for \( 0\le\ell\le\ell_{max},\,0\le m\le\ell
+!> \), swept over `NX` points \( x\in[-0.9,0.9] \). Writes every
+!> `(l,m,x)` triple's batch value, single-mode value, and absolute
+!> difference to `OUTUNIT`; fails (`STATUS=1`) if any relative error
+!> exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NX Number of \( x \) points swept over \( [-0.9,0.9] \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   X P_batch P_single abs_diff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some relative error
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_ALM_CONS(LMAX, NX, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
@@ -191,8 +261,17 @@ CONTAINS
   END SUBROUTINE BATCH_ALM_CONS
 
 
-  !  Test DDX_ASSOC_LEGENDRE_ALL against individual DDX_ASSOC_LEGENDRE calls
-  !  Columns: L  M  X  dP_batch  dP_single  abs_diff
+!> Batch-consistency check: [[DDX_ASSOC_LEGENDRE_ALL]] vs. looped
+!> [[DDX_ASSOC_LEGENDRE]] calls, for \( 0\le\ell\le\ell_{max},\,0\le
+!> m\le\ell \), swept over `NX` points \( x\in[-0.9,0.9] \). Same
+!> tolerance/output convention as [[BATCH_ALM_CONS]].
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NX Number of \( x \) points swept over \( [-0.9,0.9] \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   X dP_batch dP_single abs_diff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some relative error
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_DALM_CONS(LMAX, NX, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NX, OUTUNIT
@@ -228,8 +307,17 @@ CONTAINS
   END SUBROUTINE BATCH_DALM_CONS
 
 
-  !  Test SSH_ALL against individual SSH calls
-  !  Columns: L  M  theta  phi  re(batch)  im(batch)  re(single)  im(single)
+!> Batch-consistency check: [[SSH_ALL]] vs. looped [[SSH]] calls, for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over `NTH`
+!> colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`) if any
+!> \( |Y_{batch}-Y_{single}| \) exceeds \( 10^{-13} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi re(batch) im(batch) re(single) im(single)`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some
+!>   \( |Y_{batch}-Y_{single}|>10^{-13} \)).
   SUBROUTINE BATCH_SSH_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -267,9 +355,24 @@ CONTAINS
   END SUBROUTINE BATCH_SSH_CONS
 
 
-  !  Verify orthonormality of SSH_ALL using midpoint quadrature in u=cos(theta)
-  !  Phi integral is done analytically (= 2*pi for matching m, 0 otherwise)
-  !  Writes upper triangle of inner product matrix: L1  M  L2  integral  expected
+!> Verifies scalar spherical harmonic orthonormality,
+!> \( \int Y_{\ell_1}^m(Y_{\ell_2}^m)^{*}\,d\Omega = \delta_{\ell_1\ell_2}
+!> \), for every \( 0\le m\le\ell_1\le\ell_2\le\ell_{max} \). The
+!> \( \phi \) integral is done analytically (\( 2\pi \) for matching
+!> \( m \), by construction 0 otherwise, so only same-\( m \) pairs are
+!> checked); the \( \theta \) integral (in \( u=\cos\theta \)) uses a
+!> plain `NQUAD`-point midpoint rule via [[ASSOC_LEGENDRE_ALL]], not
+!> [[SHGLQ]] -- sufficient here since only a scalar pass/fail diagonal
+!> check is needed, not a high-order transform.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NQUAD Number of midpoint-rule quadrature points over
+!>   \( u\in[-1,1] \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L1 M
+!>   L2 inner_product expected(0_or_1)`, upper triangle \( \ell_1\le
+!>   \ell_2 \) only).
+!> @param STATUS Output: 0 = pass, 1 = fail (any diagonal off from 1, or
+!>   off-diagonal off from 0, by more than \( 10^{-3} \)).
   SUBROUTINE SSH_ORTHO(LMAX, NQUAD, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NQUAD, OUTUNIT
@@ -329,8 +432,17 @@ CONTAINS
   END SUBROUTINE SSH_ORTHO
 
 
-  !  Test GRAD_SSH_ALL against GRAD_SSH for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[GRAD_SSH_ALL]] vs. looped [[GRAD_SSH]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`)
+!> if any component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_GRAD_SSH_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -366,8 +478,17 @@ CONTAINS
   END SUBROUTINE BATCH_GRAD_SSH_CONS
 
 
-  !  Test L_SSH_ALL against L_SSH for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[L_SSH_ALL]] vs. looped [[L_SSH]] calls, for
+!> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over `NTH`
+!> colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`) if any
+!> component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_L_SSH_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -403,8 +524,17 @@ CONTAINS
   END SUBROUTINE BATCH_L_SSH_CONS
 
 
-  !  Test PVSH_RAD_ALL against PVSH_RAD for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[PVSH_RAD_ALL]] vs. looped [[PVSH_RAD]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`)
+!> if any component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_PVSH_RAD_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -440,8 +570,17 @@ CONTAINS
   END SUBROUTINE BATCH_PVSH_RAD_CONS
 
 
-  !  Test PVSH_POL_ALL against PVSH_POL for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[PVSH_POL_ALL]] vs. looped [[PVSH_POL]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`)
+!> if any component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_PVSH_POL_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -477,9 +616,19 @@ CONTAINS
   END SUBROUTINE BATCH_PVSH_POL_CONS
 
 
-  !  Test PVSH_TOR_ALL against PVSH_TOR for l>=1 (single-mode PVSH_TOR
-  !  has a 0/0 form at l=0 that the batch routine resolves to zero)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[PVSH_TOR_ALL]] vs. looped [[PVSH_TOR]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \) (both routines agree
+!> at \( \ell=0 \) too -- [[PVSH_TOR]] explicitly branches to return zero
+!> there rather than evaluating a 0/0 form). Fails (`STATUS=1`) if any
+!> component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_PVSH_TOR_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -515,8 +664,19 @@ CONTAINS
   END SUBROUTINE BATCH_PVSH_TOR_CONS
 
 
-  !  Test VSH_TOR_ALL against VSH_TOR for l>=1
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[VSH_TOR_ALL]] vs. looped [[VSH_TOR]] calls,
+!> for \( 1\le\ell\le\ell_{max},\,-\ell\le m\le\ell \) (starts at
+!> \( \ell=1 \); [[VSH_TOR]] is identical to [[PVSH_TOR]], already
+!> covered at \( \ell=0 \) by [[BATCH_PVSH_TOR_CONS]]), swept over `NTH`
+!> colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`) if any
+!> component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge1 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_VSH_TOR_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -552,8 +712,17 @@ CONTAINS
   END SUBROUTINE BATCH_VSH_TOR_CONS
 
 
-  !  Test VSH_POL_UP_ALL against VSH_POL_UP for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[VSH_POL_UP_ALL]] vs. looped [[VSH_POL_UP]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`)
+!> if any component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_VSH_POL_UP_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -589,8 +758,17 @@ CONTAINS
   END SUBROUTINE BATCH_VSH_POL_UP_CONS
 
 
-  !  Test VSH_POL_DN_ALL against VSH_POL_DN for each (l,m,theta)
-  !  Columns: L  M  theta  phi  absdiff_r  absdiff_th  absdiff_ph
+!> Batch-consistency check: [[VSH_POL_DN_ALL]] vs. looped [[VSH_POL_DN]]
+!> calls, for \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), swept over
+!> `NTH` colatitude points at fixed \( \phi=\pi/4 \). Fails (`STATUS=1`)
+!> if any component's absolute difference exceeds \( 10^{-12} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi absdiff_r absdiff_th absdiff_ph`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some component difference
+!>   \( >10^{-12} \)).
   SUBROUTINE BATCH_VSH_POL_DN_CONS(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -626,10 +804,20 @@ CONTAINS
   END SUBROUTINE BATCH_VSH_POL_DN_CONS
 
 
-  !  Test pointwise bilinear orthogonality of PVSH_POL and PVSH_TOR:
-  !  DOT(PVSH_POL(l,m), PVSH_TOR(l,m)) = 0 for all l>=1, m, theta, phi.
-  !  Verified analytically; any nonzero value indicates numerical error.
-  !  Columns: L  M  theta  phi  |DOT(PVSH_POL, PVSH_TOR)|
+!> Verifies pointwise orthogonality of the poloidal and toroidal polar
+!> VSH members, \( \mathbf{Y}_{\ell m}^{(+1)}\cdot\mathbf{Y}_{\ell
+!> m}^{(0)} = 0 \) for every \( \ell\ge1,\,m,\,\theta,\,\phi \) -- an
+!> exact analytic identity (poloidal is a pure gradient, toroidal a pure
+!> \( \hat r\times \)gradient, and \( \nabla_\perp f\cdot\hat r\times
+!> \nabla_\perp f=0 \) always), so any nonzero [[DOT]] value here is
+!> purely numerical error.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge1 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi |DOT(PVSH_POL,PVSH_TOR)|`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some \( |{\rm DOT}|>10^{-12}
+!>   \)).
   SUBROUTINE PVSH_POL_TOR_ORTHO(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
@@ -662,10 +850,25 @@ CONTAINS
   END SUBROUTINE PVSH_POL_TOR_ORTHO
 
 
-  !  Test VSH_POL_UP/DN inversion back to PVSH_POL and PVSH_RAD:
-  !    sqrt(l/(2l+1))*VSH_POL_UP + sqrt((l+1)/(2l+1))*VSH_POL_DN = PVSH_POL
-  !   -sqrt((l+1)/(2l+1))*VSH_POL_UP + sqrt(l/(2l+1))*VSH_POL_DN = PVSH_RAD
-  !  Columns: L  M  theta  phi  max_absdiff_pol  max_absdiff_rad
+!> Verifies the orthogonal-rotation identity linking the standard and
+!> polar VSH bases can be inverted exactly:
+!> $$ \sqrt{\tfrac{\ell}{2\ell+1}}\,\mathbf{Y}_{\ell m}^{\ell+1} +
+!>    \sqrt{\tfrac{\ell+1}{2\ell+1}}\,\mathbf{Y}_{\ell m}^{\ell-1} =
+!>    \mathbf{Y}_{\ell m}^{(+1)}, $$
+!> $$ -\sqrt{\tfrac{\ell+1}{2\ell+1}}\,\mathbf{Y}_{\ell m}^{\ell+1} +
+!>    \sqrt{\tfrac{\ell}{2\ell+1}}\,\mathbf{Y}_{\ell m}^{\ell-1} =
+!>    \mathbf{Y}_{\ell m}^{(-1)}, $$
+!> i.e. rotating [[VSH_POL_UP]]/[[VSH_POL_DN]] back by the same angle used
+!> to build them from [[PVSH_POL]]/[[PVSH_RAD]] recovers the originals
+!> exactly.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTH Number of colatitude points swept over \( (0,\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   theta phi max_absdiff_pol max_absdiff_rad`, each the max over the 3
+!>   vector components).
+!> @param STATUS Output: 0 = pass, 1 = fail (either max difference
+!>   \( >10^{-12} \)).
   SUBROUTINE VSH_POL_INVERSION(LMAX, NTH, OUTUNIT, STATUS)
   IMPLICIT NONE
   INTEGER(KIND=i4), INTENT(IN) :: LMAX, NTH, OUTUNIT
