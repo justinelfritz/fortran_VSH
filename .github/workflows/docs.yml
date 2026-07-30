@@ -2,7 +2,7 @@ name: Docs
 
 on:
   push:
-    branches: [master]
+    branches: [master, develop]
   pull_request:
   workflow_dispatch:
 
@@ -18,11 +18,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Runs on every push and PR: builds the FORD docs and fails the job if FORD
-  # emits any warning. This is a real regression gate, not just a formality --
-  # a prior bug caused FORD's generated Arguments tables to silently
-  # accumulate descriptions across grouped variable declarations, and FORD
-  # only surfaces that class of problem as a warning, not a build error.
+  # Runs on every push to master/develop and every PR: builds the FORD docs
+  # and fails the job if FORD emits any warning. This is a real regression
+  # gate, not just a formality -- a prior bug caused FORD's generated
+  # Arguments tables to silently accumulate descriptions across grouped
+  # variable declarations, and FORD only surfaces that class of problem as a
+  # warning, not a build error. Covering direct pushes to develop (not just
+  # PRs into it) means this check runs continuously on the integration
+  # branch, not only at PR time.
   build-docs:
     runs-on: ubuntu-latest
     steps:
@@ -56,8 +59,8 @@ jobs:
         with:
           path: docs
 
-  # Only publishes on pushes to master -- PRs and other branches get the
-  # build+warning check above, but never redeploy the live site.
+  # Only publishes on pushes to master -- develop, PRs, and other branches
+  # get the build+warning check above, but never redeploy the live site.
   deploy-docs:
     needs: build-docs
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
