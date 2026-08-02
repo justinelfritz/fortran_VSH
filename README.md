@@ -184,7 +184,7 @@ Output arrays use `PLM_INDEX(l,m) = l*(l+1)/2 + m + 1`.
 |------|-------------|
 | `ASSOC_LEGENDRE_ALL(P, LMAX, X)` | All P_l^m(x), unnormalized, Bonnet recurrence |
 | `DDX_ASSOC_LEGENDRE_ALL(DP, P, LMAX, X)` | All d/dx P_l^m(x), requires precomputed `P` |
-| `ASSOC_LEGENDRE_NORM_ALL(PNORM, LMAX, X)` | All 4π-normalized P̄_l^m(x) via Holmes & Featherstone (2002) recurrence; stable to l ≈ 2700 |
+| `ASSOC_LEGENDRE_NORM_ALL(PNORM, LMAX, X)` | All 4π-normalized P̄_l^m(x) via Holmes & Featherstone (2002) recurrence; verified accurate for l ≤ 2000 at any m, θ — beyond that, accuracy depends on θ (see [Numerical stability](#numerical-stability)) |
 | `DDX_ASSOC_LEGENDRE_NORM_ALL(DPNORM, PNORM, LMAX, X)` | All d/dx P̄_l^m(x), requires precomputed `PNORM` |
 
 ### Scalar spherical harmonics Y_l^m(θ, φ)
@@ -342,8 +342,8 @@ cmake --build build
 
 Run it from the repository root (as shown) so it can create `benchmark/`
 alongside `validation/`. Each measurement auto-calibrates its repeat count
-against wall-clock time, so results stay resolvable from `Lmax=5` up
-through `Lmax=320` without a hardcoded repetition count.
+against wall-clock time, so results stay resolvable across the full sweep
+without a hardcoded repetition count.
 
 | File | Comparison |
 |---|---|
@@ -354,9 +354,40 @@ through `Lmax=320` without a hardcoded repetition count.
 | `benchmark/bench_vsh_pol_dn.dat`   | `VSH_POL_DN_ALL` vs. looped `VSH_POL_DN` |
 
 Each file has columns `LMAX  N_MODES  T_BATCH_sec  T_LOOP_sec  SPEEDUP`,
-one row per `Lmax` in `{5, 10, 20, 40, 80, 160, 320}`, timed per grid-point
-evaluation over a 50-point sweep in the routine's natural argument
-(colatitude, or `x=cos(theta)` for the Legendre case).
+one row per `Lmax` in `{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 1500,
+2000}`, timed per grid-point evaluation over a 50-point sweep in the
+routine's natural argument (colatitude, or `x=cos(theta)` for the Legendre
+case). The naive per-mode loop's timing is only measured up to `Lmax=200`
+(`T_LOOP_sec = -1` above that): each single-mode call is itself an O(l)
+recurrence, so a naive-loop pass costs O(NX·Lmax³) — prohibitively
+expensive at high `Lmax`, and not a range where the naive/single-mode
+routines are numerically trustworthy anyway (see
+[Numerical stability](#numerical-stability)). Batch timing is unaffected
+and runs across the full sweep.
+
+## Numerical stability
+
+`ASSOC_LEGENDRE_NORM_ALL` (and the batch routines built on it) and
+`ASSOC_LEGENDRE`/`ASSOC_LEGENDRE_ALL` (and the single-mode routines built
+on them) each have a verified accurate `(l, m, theta)` range, determined by
+independent-reference numerical experiments rather than asserted from
+theory — see **`STABILITY_FINDINGS.md`** for the full methodology,
+per-degree onset tables, and a `(l, theta)` heatmap of the normalized
+recurrence's safe/unsafe boundary. Headline results:
+
+- Normalized batch routines (`ASSOC_LEGENDRE_NORM_ALL`, `SSH_ALL`, and
+  every `VSH_*_ALL`): safe for `l <= 2000` at any `m`, `theta`.
+- Unnormalized/single-mode routines (`ASSOC_LEGENDRE`, `SSH`, `VSH_TOR`,
+  `VSH_POL_UP`, `VSH_POL_DN`, etc.): safe for `l <= 150`.
+
+Both scans are opt-in, non-`ctest` build targets:
+
+```bash
+cmake -B build -DVSH_BUILD_STABILITY=ON
+cmake --build build
+./build/vsh_stability          # normalized recurrence, writes stability/stability_map.dat
+./build/vsh_unnorm_stability   # unnormalized recurrence, writes stability/unnorm_diagonal.dat
+```
 
 ## API documentation
 
