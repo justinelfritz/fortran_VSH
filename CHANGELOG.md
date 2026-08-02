@@ -11,6 +11,78 @@ PATCH for bug fixes · MINOR for new API additions · MAJOR for breaking changes
 
 ---
 
+## [0.3.1] — 2026-08-02
+
+### Added
+- GitHub Actions CI (`.github/workflows/ci.yml`): `build-and-test` job on every
+  push/PR — one combined configure with every opt-in CMake option enabled,
+  `ctest`, running all worked examples, a benchmark smoke-test, install +
+  pkg-config + a `find_package(FORTVSH)` downstream-consumer check.
+- GitHub Actions docs publishing (`.github/workflows/docs.yml`): `build-docs`
+  (FORD-warning regression gate on push to `master`/`develop` and on every PR)
+  and `deploy-docs` (publishes HTML API docs to GitHub Pages on push to
+  `master` only).
+- `VSH_BUILD_CONVERGENCE` CMake option (default `OFF`): `vsh_convergence`
+  executable (`src/convergence_main.f90`), an accuracy sweep feeding the
+  manuscript's convergence figures. Not part of `ctest`.
+- `VSH_BUILD_STABILITY` CMake option (default `OFF`): `vsh_stability` /
+  `vsh_unnorm_stability` executables (`src/stability_main.f90`,
+  `src/unnorm_stability_main.f90`) mapping the numerically safe `(l, m,
+  theta)` range of the normalized and unnormalized Legendre recurrences,
+  respectively. Not part of `ctest`.
+- `STABILITY_FINDINGS.md`: full writeup of both stability investigations —
+  methodology, per-degree onset tables, and the practical safe-range
+  guidance now reflected in the affected routines' docstrings.
+- `py/mpmath_reference.py`: independent arbitrary-precision reference
+  (Legendre/SSH/VSH, via a high-precision rerun of the library's own Bonnet
+  recurrence rather than a separate ground-truth implementation) backing
+  both the stability investigation and the rebuilt convergence-accuracy
+  figures.
+- `py/plot_convergence_unnormalized.py`, `py/plot_stability.py`: new
+  figures (`convergence_accuracy_unnormalized`, `stability_map`).
+- `py/requirements.txt`: first explicit Python dependency manifest for the
+  `py/` scripts (`numpy`, `matplotlib`, `mpmath`).
+
+### Fixed
+- `ASSOC_LEGENDRE_NORM_ALL` and the 10 batch routines built on it
+  (`DDX_ASSOC_LEGENDRE_NORM_ALL`, `SSH_ALL`, `GRAD_SSH_ALL`, `L_SSH_ALL`,
+  `PVSH_RAD_ALL`, `PVSH_POL_ALL`, `PVSH_TOR_ALL`, `VSH_TOR_ALL`,
+  `VSH_POL_UP_ALL`, `VSH_POL_DN_ALL`): docstrings corrected from an
+  unverified "stable to l~2700" claim to a verified range — unconditionally
+  safe to `l<=2000`; beyond that, safety depends on `theta` (see
+  `STABILITY_FINDINGS.md`).
+- `ASSOC_LEGENDRE`, `ASSOC_LEGENDRE_ALL`, and the 12 single-mode/derivative
+  routines built on the unnormalized recurrence: docstrings corrected from
+  an unverified "stable to l~1400" claim to a verified `l<=150` safe range
+  (worst case at the equator).
+- `vsh_benchmark`'s naive-loop timing measurement: each naive-loop pass
+  costs O(NX·Lmax³) (every single-mode call is itself an O(l) recurrence),
+  so extending the sweep to `Lmax=4000` made a single measurement run for
+  hours. Added `LOOP_LMAX_CAP=200` (`src/benchmark.f90`) so naive-loop
+  timing stops there; batch timing is unaffected and still runs to
+  `Lmax=2000`.
+
+### Changed
+- `convergence_accuracy` figure rebuilt: now diffs the normalized batch
+  routines against the independent arbitrary-precision reference (rather
+  than diffing batch against single-mode, which only showed where the
+  *less* stable single-mode path degraded, not whether either was close to
+  the true value), scoped to the verified-safe `l<=2000` range. The
+  unnormalized family got its own new figure,
+  `convergence_accuracy_unnormalized`, scoped to `l<=150`.
+- `benchmark_scaling` / `benchmark_speedup` figures: each series now
+  truncated to its own verified-safe range (naive loop `l<=150`, batch
+  `l<=2000`) instead of both plotted uniformly out to `Lmax=4000`.
+- `README.md`: corrected the `ASSOC_LEGENDRE_NORM_ALL` API table's stale
+  "stable to l ≈ 2700" claim and the Benchmarking section's `Lmax` sweep
+  description to match the current sweep and the naive-loop cap; added a
+  Numerical stability section pointing to `STABILITY_FINDINGS.md`.
+- `.gitignore`: added `/benchmark/`, `/convergence/`, `/stability/`
+  (regenerable output from the three opt-in CMake targets above, same
+  category as the existing `/validation/*.dat` entry) and `__pycache__/`.
+
+---
+
 ## [0.3.0] — 2026-07-30
 
 ### Added
