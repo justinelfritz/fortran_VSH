@@ -11,6 +11,20 @@ tex/Copernicus-EGU/figures/:
   benchmark_speedup.pdf  -- batch/loop speedup vs Lmax, overlaid across
                             routines
 
+bench_main.f90's LMAX_LIST extends to 4000 (from the investigation that
+produced STABILITY_FINDINGS.md), but each series here is truncated to its
+OWN verified-safe range rather than plotted all the way out: "Naive loop"
+(single-mode, built on the unnormalized recurrence) stops at
+NAIVE_SAFE_LMAX=150, "Batch (_ALL)" (normalized recurrence) stops at
+BATCH_SAFE_LMAX=2000 (STABILITY_FINDINGS.md Parts 2 and 1 respectively).
+Wall-clock timing itself doesn't care whether the computed value is
+correct -- a NaN takes just as long to produce as a valid float -- so nothing
+would visibly break if these were left unfiltered, but showing timing data
+for a regime where the manuscript elsewhere states the routine gives wrong
+answers would be a strange thing to leave in. Truncating each line at its
+own limit rather than capping the whole figure at 150 also makes a real
+point: batch isn't just faster, it's the only one still valid past l=150.
+
 Run from the project root, after generating benchmark data:
     cmake -B build -DVSH_BUILD_BENCHMARK=ON && cmake --build build
     ./build/vsh_benchmark
@@ -27,6 +41,10 @@ from plotstyle import BLUE, ORANGE, AQUA, YELLOW, INK_PRIMARY, \
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR   = os.path.dirname(SCRIPT_DIR)
 BENCH_DIR  = os.path.join(ROOT_DIR, 'benchmark')
+
+# Verified-safe ranges from STABILITY_FINDINGS.md (Parts 2 and 1).
+NAIVE_SAFE_LMAX = 150
+BATCH_SAFE_LMAX = 2000
 
 # All five benchmarked routines, for the per-routine scaling small multiples.
 ROUTINES = [
@@ -60,13 +78,15 @@ def plot_scaling():
                               facecolor=SURFACE)
     for ax, (fname, label) in zip(axes, ROUTINES):
         lmax, _, t_batch, t_loop, _ = load(fname)
+        naive_mask = lmax <= NAIVE_SAFE_LMAX
+        batch_mask = lmax <= BATCH_SAFE_LMAX
         style_axes(ax)
-        ax.plot(lmax, t_loop, color=ORANGE, marker='o', markersize=5,
-                linewidth=2, solid_capstyle='round', label='Naive loop',
-                zorder=3)
-        ax.plot(lmax, t_batch, color=BLUE, marker='o', markersize=5,
-                linewidth=2, solid_capstyle='round', label='Batch (_ALL)',
-                zorder=3)
+        ax.plot(lmax[naive_mask], t_loop[naive_mask], color=ORANGE,
+                marker='o', markersize=5, linewidth=2,
+                solid_capstyle='round', label='Naive loop', zorder=3)
+        ax.plot(lmax[batch_mask], t_batch[batch_mask], color=BLUE,
+                marker='o', markersize=5, linewidth=2,
+                solid_capstyle='round', label='Batch (_ALL)', zorder=3)
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.set_title(label, color=INK_PRIMARY, fontsize=10)
@@ -82,10 +102,20 @@ def plot_scaling():
 
 
 def plot_speedup():
+    """
+    Speedup = T_loop/T_batch requires both series to mean something at the
+    same Lmax, so this is truncated to NAIVE_SAFE_LMAX (the tighter of the
+    two ranges) rather than each line independently -- unlike plot_scaling,
+    there's no valid "naive" baseline left to speed up from past l=150.
+    """
     fig, ax = plt.subplots(figsize=(6.2, 4.2), facecolor=SURFACE)
     style_axes(ax)
+    last_lmax = None
     for fname, label, color in SPEEDUP_ROUTINES:
         lmax, _, _, _, speedup = load(fname)
+        mask = lmax <= NAIVE_SAFE_LMAX
+        lmax, speedup = lmax[mask], speedup[mask]
+        last_lmax = lmax
         ax.plot(lmax, speedup, color=color, marker='o', markersize=6,
                 linewidth=2, solid_capstyle='round', zorder=3)
         ax.annotate(label, xy=(lmax[-1], speedup[-1]),
@@ -93,11 +123,12 @@ def plot_speedup():
                     va='center', fontsize=9, color=color, clip_on=False)
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlim(right=lmax[-1] * 3.2)
+    ax.set_xlim(right=last_lmax[-1] * 3.2)
     ax.set_xlabel(r'$L_{max}$', fontsize=10, color=INK_SECONDARY)
     ax.set_ylabel('speedup (naive loop / batch)', fontsize=10,
                   color=INK_SECONDARY)
-    ax.set_title('Batch vs. naive per-mode loop speedup',
+    ax.set_title('Batch vs. naive per-mode loop speedup '
+                 '(naive-loop verified-safe range)',
                  color=INK_PRIMARY, fontsize=11)
     fig.tight_layout()
     return fig
