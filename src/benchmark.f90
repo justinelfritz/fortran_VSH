@@ -32,6 +32,17 @@ REAL(KIND=dp),    PARAMETER :: MIN_TIME = 0.2_dp
 !> measurement can't spin forever.
 INTEGER(KIND=i4), PARAMETER :: NREP_CAP = 1000000
 
+!> Naive-loop measurements are skipped above this Lmax. Each single-mode
+!> call (ASSOC_LEGENDRE, SSH, ...) is itself an O(l) recurrence, so one
+!> naive-loop grid sweep costs O(NX*LMAX^3), not O(NX*LMAX^2) like the
+!> batch routines -- at LMAX=4000 a single measurement (NREP=1, before
+!> MIN_TIME calibration even gets a chance to stop doubling) took multiple
+!> hours and never completed. There's no reason to pay that cost anyway:
+!> the naive/single-mode routines are only verified-safe to l<=150 (see
+!> STABILITY_FINDINGS.md Part 2), so timing them past that range times how
+!> fast they compute wrong answers.
+INTEGER(KIND=i4), PARAMETER :: LOOP_LMAX_CAP = 200
+
 CONTAINS
 
 !> Wall-clock seconds elapsed, via `SYSTEM_CLOCK` with an `INTEGER(i8)`
@@ -91,29 +102,39 @@ CONTAINS
   IF (ACC == -1.0d300) WRITE(*,'(A)') ""  !- defeat dead-code elimination
 
   ! ── Loop: ASSOC_LEGENDRE called once per (l,m) at each grid point ───────
-  NREP = 1
-  DO
-    ACC = 0.d0
-    T0 = WALL_TIME()
-    DO R = 1, NREP
-      DO IX = 0, NX-1
-        X = -0.9_dp + IX*DX
-        DO L = 0, LMAX
-          DO M = 0, L
-            ACC = ACC + ASSOC_LEGENDRE(L, M, X)
+  ! (skipped above LOOP_LMAX_CAP -- see its declaration for why)
+  IF (LMAX <= LOOP_LMAX_CAP) THEN
+    NREP = 1
+    DO
+      ACC = 0.d0
+      T0 = WALL_TIME()
+      DO R = 1, NREP
+        DO IX = 0, NX-1
+          X = -0.9_dp + IX*DX
+          DO L = 0, LMAX
+            DO M = 0, L
+              ACC = ACC + ASSOC_LEGENDRE(L, M, X)
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
+      T1 = WALL_TIME()
+      IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
+      NREP = NREP*2
     ENDDO
-    T1 = WALL_TIME()
-    IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
-    NREP = NREP*2
-  ENDDO
-  T_LOOP = (T1-T0) / (NREP*NX)
-  IF (ACC == -1.0d300) WRITE(*,'(A)') ""
+    T_LOOP = (T1-T0) / (NREP*NX)
+    IF (ACC == -1.0d300) WRITE(*,'(A)') ""
+  ELSE
+    T_LOOP = -1.0_dp   !- sentinel: not measured, see LOOP_LMAX_CAP
+  END IF
 
-  WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
-    LMAX, PSIZE, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  IF (T_LOOP >= 0.0_dp) THEN
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, PSIZE, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  ELSE
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, PSIZE, T_BATCH, T_LOOP, -1.0_dp
+  END IF
 
   DEALLOCATE(PNORM)
   RETURN
@@ -160,29 +181,38 @@ CONTAINS
   ACC = SUM(YLM)
   IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
 
-  NREP = 1
-  DO
-    ACC = DCMPLX(0.d0,0.d0)
-    T0 = WALL_TIME()
-    DO R = 1, NREP
-      DO IX = 0, NX-1
-        THETA = IX*DTH
-        DO L = 0, LMAX
-          DO M = -L, L
-            ACC = ACC + SSH(L, M, THETA, PHI)
+  IF (LMAX <= LOOP_LMAX_CAP) THEN
+    NREP = 1
+    DO
+      ACC = DCMPLX(0.d0,0.d0)
+      T0 = WALL_TIME()
+      DO R = 1, NREP
+        DO IX = 0, NX-1
+          THETA = IX*DTH
+          DO L = 0, LMAX
+            DO M = -L, L
+              ACC = ACC + SSH(L, M, THETA, PHI)
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
+      T1 = WALL_TIME()
+      IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
+      NREP = NREP*2
     ENDDO
-    T1 = WALL_TIME()
-    IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
-    NREP = NREP*2
-  ENDDO
-  T_LOOP = (T1-T0) / (NREP*NX)
-  IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+    T_LOOP = (T1-T0) / (NREP*NX)
+    IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+  ELSE
+    T_LOOP = -1.0_dp   !- sentinel: not measured, see LOOP_LMAX_CAP
+  END IF
 
-  WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
-    LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  IF (T_LOOP >= 0.0_dp) THEN
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  ELSE
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, -1.0_dp
+  END IF
 
   DEALLOCATE(YLM)
   RETURN
@@ -229,29 +259,38 @@ CONTAINS
   ACC = SUM(OUT)
   IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
 
-  NREP = 1
-  DO
-    ACC = DCMPLX(0.d0,0.d0)
-    T0 = WALL_TIME()
-    DO R = 1, NREP
-      DO IX = 0, NX-1
-        THETA = IX*DTH
-        DO L = 0, LMAX
-          DO M = -L, L
-            ACC = ACC + SUM(VSH_TOR(L, M, THETA, PHI))
+  IF (LMAX <= LOOP_LMAX_CAP) THEN
+    NREP = 1
+    DO
+      ACC = DCMPLX(0.d0,0.d0)
+      T0 = WALL_TIME()
+      DO R = 1, NREP
+        DO IX = 0, NX-1
+          THETA = IX*DTH
+          DO L = 0, LMAX
+            DO M = -L, L
+              ACC = ACC + SUM(VSH_TOR(L, M, THETA, PHI))
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
+      T1 = WALL_TIME()
+      IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
+      NREP = NREP*2
     ENDDO
-    T1 = WALL_TIME()
-    IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
-    NREP = NREP*2
-  ENDDO
-  T_LOOP = (T1-T0) / (NREP*NX)
-  IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+    T_LOOP = (T1-T0) / (NREP*NX)
+    IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+  ELSE
+    T_LOOP = -1.0_dp   !- sentinel: not measured, see LOOP_LMAX_CAP
+  END IF
 
-  WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
-    LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  IF (T_LOOP >= 0.0_dp) THEN
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  ELSE
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, -1.0_dp
+  END IF
 
   DEALLOCATE(OUT)
   RETURN
@@ -298,29 +337,38 @@ CONTAINS
   ACC = SUM(OUT)
   IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
 
-  NREP = 1
-  DO
-    ACC = DCMPLX(0.d0,0.d0)
-    T0 = WALL_TIME()
-    DO R = 1, NREP
-      DO IX = 0, NX-1
-        THETA = IX*DTH
-        DO L = 0, LMAX
-          DO M = -L, L
-            ACC = ACC + SUM(VSH_POL_UP(L, M, THETA, PHI))
+  IF (LMAX <= LOOP_LMAX_CAP) THEN
+    NREP = 1
+    DO
+      ACC = DCMPLX(0.d0,0.d0)
+      T0 = WALL_TIME()
+      DO R = 1, NREP
+        DO IX = 0, NX-1
+          THETA = IX*DTH
+          DO L = 0, LMAX
+            DO M = -L, L
+              ACC = ACC + SUM(VSH_POL_UP(L, M, THETA, PHI))
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
+      T1 = WALL_TIME()
+      IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
+      NREP = NREP*2
     ENDDO
-    T1 = WALL_TIME()
-    IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
-    NREP = NREP*2
-  ENDDO
-  T_LOOP = (T1-T0) / (NREP*NX)
-  IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+    T_LOOP = (T1-T0) / (NREP*NX)
+    IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+  ELSE
+    T_LOOP = -1.0_dp   !- sentinel: not measured, see LOOP_LMAX_CAP
+  END IF
 
-  WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
-    LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  IF (T_LOOP >= 0.0_dp) THEN
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  ELSE
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, -1.0_dp
+  END IF
 
   DEALLOCATE(OUT)
   RETURN
@@ -367,29 +415,38 @@ CONTAINS
   ACC = SUM(OUT)
   IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
 
-  NREP = 1
-  DO
-    ACC = DCMPLX(0.d0,0.d0)
-    T0 = WALL_TIME()
-    DO R = 1, NREP
-      DO IX = 0, NX-1
-        THETA = IX*DTH
-        DO L = 0, LMAX
-          DO M = -L, L
-            ACC = ACC + SUM(VSH_POL_DN(L, M, THETA, PHI))
+  IF (LMAX <= LOOP_LMAX_CAP) THEN
+    NREP = 1
+    DO
+      ACC = DCMPLX(0.d0,0.d0)
+      T0 = WALL_TIME()
+      DO R = 1, NREP
+        DO IX = 0, NX-1
+          THETA = IX*DTH
+          DO L = 0, LMAX
+            DO M = -L, L
+              ACC = ACC + SUM(VSH_POL_DN(L, M, THETA, PHI))
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
+      T1 = WALL_TIME()
+      IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
+      NREP = NREP*2
     ENDDO
-    T1 = WALL_TIME()
-    IF (T1-T0 >= MIN_TIME .OR. NREP >= NREP_CAP) EXIT
-    NREP = NREP*2
-  ENDDO
-  T_LOOP = (T1-T0) / (NREP*NX)
-  IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+    T_LOOP = (T1-T0) / (NREP*NX)
+    IF (ACC == (-1.0d300,0.d0)) WRITE(*,'(A)') ""
+  ELSE
+    T_LOOP = -1.0_dp   !- sentinel: not measured, see LOOP_LMAX_CAP
+  END IF
 
-  WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
-    LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  IF (T_LOOP >= 0.0_dp) THEN
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, T_LOOP/T_BATCH
+  ELSE
+    WRITE(OUTUNIT,'(I6,1X,I8,1X,ES14.6,1X,ES14.6,1X,F12.3)') &
+      LMAX, NYLM, T_BATCH, T_LOOP, -1.0_dp
+  END IF
 
   DEALLOCATE(OUT)
   RETURN
