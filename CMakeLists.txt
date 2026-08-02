@@ -17,6 +17,8 @@ option(VSH_BUILD_SHARED    "Build shared library (libvsh.so) in addition to stat
 option(VSH_INSTALL_TESTS   "Install the vsh_test executable"                         OFF)
 option(VSH_BUILD_BENCHMARK "Build the vsh_benchmark executable (batch vs. naive-loop timing)" OFF)
 option(VSH_BUILD_EXAMPLES  "Build the poloidal-dipole worked-example executables"    OFF)
+option(VSH_BUILD_CONVERGENCE "Build the vsh_convergence executable (batch-consistency accuracy sweep up to Lmax=300)" OFF)
+option(VSH_BUILD_STABILITY "Build the vsh_stability executable (ASSOC_LEGENDRE_NORM_ALL stability scan over l,m,theta)" OFF)
 
 # ── Generate version Fortran module ──────────────────────────────────────────
 configure_file(
@@ -116,6 +118,48 @@ if(VSH_BUILD_BENCHMARK)
   target_link_libraries(vsh_benchmark PRIVATE vsh)
   set_target_properties(vsh_benchmark PROPERTIES
     Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
+
+# ── Convergence executable (opt-in; not part of ctest) ────────────────────────
+# Calls the same TESTS batch-consistency routines main.f90 uses for the
+# correctness gate, but at Lmax=300 instead of the small fixed values that
+# gate matter -- error legitimately grows with Lmax, so this is a figure
+# data source, not a pass/fail check. Compiles src/tests.f90 a second time
+# (same pattern as vsh_test) rather than restructuring TESTS into its own
+# library target. Writes to ./convergence/, kept separate from
+# ./validation/ so it can never interact with VSH_REGRESSION_TEST.
+if(VSH_BUILD_CONVERGENCE)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/convergence")
+  add_executable(vsh_convergence src/tests.f90 src/convergence_main.f90)
+  target_link_libraries(vsh_convergence PRIVATE vsh)
+  set_target_properties(vsh_convergence PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj_convergence"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
+
+# ── Stability-scan executable (opt-in; not part of ctest) ─────────────────────
+# Maps where ASSOC_LEGENDRE_NORM_ALL's Holmes-Featherstone recurrence stays
+# accurate vs. blows up across (l, m, theta) -- see STABILITY_FINDINGS.md.
+# Standalone (doesn't need TESTS), writes to ./stability/.
+if(VSH_BUILD_STABILITY)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/stability")
+  add_executable(vsh_stability src/stability_main.f90)
+  target_link_libraries(vsh_stability PRIVATE vsh)
+  set_target_properties(vsh_stability PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj_stability"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+
+  # Companion scan for the unnormalized Bonnet recurrence (ASSOC_LEGENDRE/
+  # _ALL and everything single-mode built on it) -- separate PROGRAM unit,
+  # same opt-in flag/output directory.
+  add_executable(vsh_unnorm_stability src/unnorm_stability_main.f90)
+  target_link_libraries(vsh_unnorm_stability PRIVATE vsh)
+  set_target_properties(vsh_unnorm_stability PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj_unnorm_stability"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()

@@ -298,9 +298,21 @@ CONTAINS
 !> starting from \( P_m^m(x) = (-1)^m(2m{-}1)!!\,(1{-}x^2)^{m/2} \). For
 !> negative order, \( P_\ell^{-k}(x) = (-1)^k\,\frac{(\ell-k)!}{(\ell+k)!}
 !> P_\ell^k(x) \). Unnormalized (unlike [[ASSOC_LEGENDRE_NORM_ALL]]); loses
-!> numerical stability above \( \ell \sim 1400 \) as the intermediate
-!> \( P_m^m \) values grow/shrink without bound. Returns 0 for
-!> \( |k|>\ell \) or \( |x|>1 \).
+!> numerical stability well before the intermediate \( P_m^m \) values
+!> literally overflow, since the later upward-in-\(\ell\) recurrence
+!> involves a subtraction of two comparably huge terms (catastrophic
+!> cancellation).
+!>
+!> @warning **Numerical stability**: verified accurate (relative error
+!>   `< 3e-14`) for \( \ell\le150 \) at any \( m,\theta \) -- the worst
+!>   case, \( \ell=151 \), occurs near the equator (\( \theta\approx90 \)
+!>   degrees) at \( m=\ell \); safety improves toward either pole. This
+!>   supersedes an earlier "\( \ell\sim1400 \)" claim, verified too
+!>   optimistic by direct comparison against an arbitrary-precision
+!>   reference. Full methodology and per-degree table:
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2 (regenerable via the
+!>   opt-in `VSH_BUILD_STABILITY` CMake target's `vsh_unnorm_stability`
+!>   executable).
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -358,6 +370,10 @@ CONTAINS
 !> [[ASSOC_LEGENDRE]] calls that [[DDX_ASSOC_LEGENDRE]] would otherwise
 !> need, and the repeated [[SSH]] + [[DDX_ASSOC_LEGENDRE]] evaluation that
 !> [[GRAD_SSH]] and [[L_SSH]] both build on.
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE]]'s stability limit (safe for
+!>   \( \ell\le150 \) at any \( m,\theta \)) -- see `STABILITY_FINDINGS.md`
+!>   at the repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -423,6 +439,10 @@ CONTAINS
 !> via [[ASSOC_LEGENDRE_AND_DERIV]] (thin wrapper that discards \(
 !> P_\ell^k(x) \) itself).
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE]]'s stability limit (safe for
+!>   \( \ell\le150 \) at any \( m,\theta \)) -- see `STABILITY_FINDINGS.md`
+!>   at the repo root, Part 2.
+!>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
 !> @param X Argument, \( -1 \le x \le 1 \).
@@ -441,6 +461,12 @@ CONTAINS
 !> with the Condon-Shortley phase:
 !> $$ Y_\ell^k(\theta,\phi) = \sqrt{\frac{2\ell+1}{4\pi}\frac{(\ell-k)!}{(\ell+k)!}}\,
 !>    P_\ell^k(\cos\theta)\,e^{ik\phi}. $$
+!>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE]] -- inherits its
+!>   stability limit (safe for \( \ell\le150 \) at any \( m,\theta \)),
+!>   *not* [[SSH_ALL]]'s \( \ell\le2000 \) (that routine uses the
+!>   normalized recurrence instead). See `STABILITY_FINDINGS.md` at the
+!>   repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -467,6 +493,11 @@ CONTAINS
 !> 3-vector \( (\hat r,\hat\theta,\hat\phi) \) with a zero radial
 !> component, since the gradient of a purely angular function is purely
 !> tangential.
+!>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[GRAD_SSH_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -507,6 +538,11 @@ CONTAINS
 !> tangent plane: \( \hat r\times(\hat\theta\,G_\theta+\hat\phi\,G_\phi)
 !> = \hat\theta\,(-G_\phi) + \hat\phi\,G_\theta \).
 !>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[L_SSH_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
+!>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
 !> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
@@ -546,6 +582,11 @@ CONTAINS
 !> piece of a poloidal magnetic (or any divergence-free) field,
 !> \( B_r = \frac{\ell(\ell+1)}{r^2}\,f(r)\,Y_\ell^m \).
 !>
+!> @warning Built on [[SSH]] -- inherits the unnormalized
+!>   [[ASSOC_LEGENDRE]]'s stability limit (safe for \( \ell\le150 \) at
+!>   any \( m,\theta \)), *not* [[PVSH_RAD_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
+!>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
 !> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
@@ -575,6 +616,11 @@ CONTAINS
 !> toroidal magnetic field, \( \mathbf{B}_{tor} = T(r)\,
 !> \mathbf{Y}_{\ell m}^{(0)} \) for a toroidal stream function
 !> \( T(r) \). Zero for \( \ell=0 \) (no toroidal monopole).
+!>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[PVSH_TOR_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -627,6 +673,11 @@ CONTAINS
 !> \sqrt{\ell(\ell+1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Zero for
 !> \( \ell=0 \) (a constant has no horizontal gradient).
 !>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[PVSH_POL_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
+!>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
 !> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
@@ -675,6 +726,12 @@ CONTAINS
 !> already carries total angular momentum \( J=\ell \) with no
 !> \( J=\ell\pm1 \) admixture.
 !>
+!> @warning Identical to [[PVSH_TOR]] -- inherits the unnormalized
+!>   [[ASSOC_LEGENDRE_AND_DERIV]]'s stability limit (safe for
+!>   \( \ell\le150 \) at any \( m,\theta \)), *not* [[VSH_TOR_ALL]]'s
+!>   \( \ell\le2000 \). See `STABILITY_FINDINGS.md` at the repo root,
+!>   Part 2.
+!>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
 !> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
@@ -707,6 +764,11 @@ CONTAINS
 !>   magnetic-dipole radial:horizontal ratio -- `VSH_POL_DN(1,0,...)` is
 !>   proportional to \( (\cos\theta,\,-\sin\theta,\,0) \), a 1:-1 ratio.
 !>   [[VSH_POL_UP]] is the one that reproduces the dipole pattern.
+!>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[VSH_POL_DN_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -761,6 +823,11 @@ CONTAINS
 !> @note At \( \ell=1 \), `VSH_POL_UP(1,0,...)` is proportional to
 !>   \( (2\cos\theta,\,\sin\theta,\,0) \) -- the classic 2:1 magnetic-dipole
 !>   radial:horizontal ratio.
+!>
+!> @warning Built on the unnormalized [[ASSOC_LEGENDRE_AND_DERIV]] --
+!>   inherits its stability limit (safe for \( \ell\le150 \) at any
+!>   \( m,\theta \)), *not* [[VSH_POL_UP_ALL]]'s \( \ell\le2000 \). See
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2.
 !>
 !> @param L Degree, \( \ell \ge 0 \).
 !> @param K Order, \( -\ell \le k \le \ell \).
@@ -1145,9 +1212,20 @@ CONTAINS
 !> in one pass (amortizing shared recurrence terms across every \( \ell
 !> \) at fixed \( m \) -- far cheaper than \( (\ell_{max}{+}1)^2/2 \)
 !> independent [[ASSOC_LEGENDRE]] calls). Condon-Shortley phase; same
-!> \( \ell\sim1400 \) stability ceiling as [[ASSOC_LEGENDRE]] (see
-!> [[ASSOC_LEGENDRE_NORM_ALL]] for the stable-to-high-\( \ell \)
-!> alternative).
+!> recurrence and same stability limit as [[ASSOC_LEGENDRE]] (see
+!> [[ASSOC_LEGENDRE_NORM_ALL]] for the far-more-stable normalized
+!> alternative, itself safe to \( \ell\le2000 \)).
+!>
+!> @warning **Numerical stability**: verified accurate (relative error
+!>   `< 3e-14`) for \( \ell\le150 \) at any \( m,\theta \) -- the worst
+!>   case, \( \ell=151 \), occurs near the equator (\( \theta\approx90 \)
+!>   degrees) at \( m=\ell \); safety improves toward either pole. This
+!>   supersedes an earlier "\( \ell\sim1400 \)" claim, verified too
+!>   optimistic by direct comparison against an arbitrary-precision
+!>   reference. Full methodology and per-degree table:
+!>   `STABILITY_FINDINGS.md` at the repo root, Part 2 (regenerable via the
+!>   opt-in `VSH_BUILD_STABILITY` CMake target's `vsh_unnorm_stability`
+!>   executable).
 !>
 !> @param P Output, size `(LMAX+1)*(LMAX+2)/2`, indexed by
 !>   [[PLM_INDEX]](l,m).
@@ -1182,6 +1260,10 @@ CONTAINS
 !> All derivatives \( dP_\ell^m/dx \) for \( 0\le\ell\le\ell_{max},\,
 !> 0\le m\le\ell \), reusing a precomputed [[ASSOC_LEGENDRE_ALL]] table
 !> rather than recomputing \( P_\ell^m \) from scratch.
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_ALL]]'s stability limit (safe for
+!>   \( \ell\le150 \) at any \( m,\theta \)) -- see `STABILITY_FINDINGS.md`
+!>   at the repo root, Part 2.
 !>
 !> @param DP_OUT Output derivatives, size `(LMAX+1)*(LMAX+2)/2`, indexed
 !>   by [[PLM_INDEX]](l,m); 0 at the poles (\( |x|\ge1 \)).
@@ -1224,10 +1306,25 @@ CONTAINS
 !> Holmes & Featherstone (2002) modified forward-column recurrence. The
 !> normalization is folded directly into the recurrence coefficients,
 !> keeping every intermediate value \( O(1/\sqrt{4\pi}) \) rather than
-!> letting \( P_m^m \) itself grow/shrink combinatorially -- this extends
-!> numerical stability to \( \ell\sim2700 \), versus \( \ell\sim1400 \)
-!> for the unnormalized [[ASSOC_LEGENDRE_ALL]]/Bonnet recurrence. This is
+!> letting \( P_m^m \) itself grow/shrink combinatorially like the
+!> unnormalized [[ASSOC_LEGENDRE_ALL]]/Bonnet recurrence does. This is
 !> the recurrence [[SSH_ALL]] and every batch VSH routine build on.
+!>
+!> @warning **Numerical stability**: verified safe for \( \ell\le2000 \)
+!>   at any \( m,\theta \). Beyond that, safety depends on \( \theta \):
+!>   this recurrence has a distinct failure mode near the classical
+!>   turning point of the associated Legendre ODE (\( \sin\theta\approx
+!>   m/\ell \)) -- for \( \theta \) within about 30-56 degrees of either
+!>   pole, values can blow up by 100+ orders of magnitude once \( \ell \)
+!>   exceeds a \(\theta\)-dependent onset (as low as \( \ell=2100 \) in
+!>   the worst case, \( \theta\approx30 \) degrees). Near the poles
+!>   (\( \theta<30 \) degrees) or equator (\( 57\le\theta\le123 \)
+!>   degrees) it remains accurate at least to \( \ell=5000 \) (untested
+!>   beyond that). This supersedes an earlier, overly optimistic
+!>   "stable to \( \ell\sim2700 \)" claim that didn't account for the
+!>   \(\theta\)-dependence. Full methodology, per-degree onset table, and
+!>   a `(\ell,\theta)` heatmap: `STABILITY_FINDINGS.md` at the repo root
+!>   (regenerable via the opt-in `VSH_BUILD_STABILITY` CMake target).
 !>
 !> @param PNORM Output, size `(LMAX+1)*(LMAX+2)/2`, indexed by
 !>   [[PLM_INDEX]](l,m).
@@ -1274,6 +1371,10 @@ CONTAINS
 !> This is the recurrence [[VSH_CORE]] (and therefore every batch VSH
 !> routine) uses for the \( \hat\theta \) component.
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
+!>
 !> @param DPNORM Output derivatives, size `(LMAX+1)*(LMAX+2)/2`, indexed
 !>   by [[PLM_INDEX]](l,m); 0 at the poles (\( |x|\ge1 \)).
 !> @param PNORM Precomputed normalized table from
@@ -1316,6 +1417,10 @@ CONTAINS
 !> \( m<0 \) via the conjugate symmetry \( Y_\ell^{-m} =
 !> (-1)^m\,(Y_\ell^m)^{*} \) rather than a second recurrence pass.
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
+!>
 !> @param YLM Output, size `(LMAX+1)**2`, indexed by [[YLM_INDEX]](l,m).
 !> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
 !> @param THETA Colatitude in radians, \( 0\le\theta\le\pi \).
@@ -1356,6 +1461,10 @@ CONTAINS
 !> gradient components ([[GRAD_SSH]]'s \( \hat\theta,\hat\phi \) parts)
 !> for every \( (\ell,m) \) in one pass, so each caller only has to apply
 !> its own linear combination/normalization on top.
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param YLM_OUT Output \( Y_\ell^m \), size `(LMAX+1)**2`, indexed by
 !>   [[YLM_INDEX]](l,m).
@@ -1414,6 +1523,10 @@ CONTAINS
 !> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one
 !> [[VSH_CORE]] pass.
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
+!>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
 !>   axis indexed by [[YLM_INDEX]](l,m).
@@ -1441,6 +1554,10 @@ CONTAINS
 !> All angular-momentum-operator fields \( \hat r\times\nabla_\perp
 !> Y_\ell^m \) ([[L_SSH]]) for \( 0\le\ell\le\ell_{max},\,-\ell\le
 !> m\le\ell \), from one [[VSH_CORE]] pass.
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
@@ -1470,6 +1587,10 @@ CONTAINS
 !> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
 !> pass.
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
+!>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\)=\(Y_\ell^m\), `2`=\(\hat\theta\) (always 0),
 !>   `3`=\(\hat\phi\) (always 0); mode axis indexed by
@@ -1498,6 +1619,10 @@ CONTAINS
 !> All poloidal (horizontal) polar VSH members [[PVSH_POL]] for
 !> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
 !> pass. Zero for \( \ell=0 \).
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
@@ -1533,6 +1658,10 @@ CONTAINS
 !> All toroidal polar VSH members [[PVSH_TOR]] for
 !> \( 0\le\ell\le\ell_{max},\,-\ell\le m\le\ell \), from one [[VSH_CORE]]
 !> pass. Zero for \( \ell=0 \).
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
@@ -1570,6 +1699,10 @@ CONTAINS
 !> [[PVSH_TOR_ALL]] (thin wrapper) -- the toroidal member is common to
 !> both bases.
 !>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
+!>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\) (always 0), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode
 !>   axis indexed by [[YLM_INDEX]](l,m).
@@ -1592,6 +1725,10 @@ CONTAINS
 !> \sqrt{\ell/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Well-defined
 !> (nonzero) at \( \ell=0 \) -- see [[VSH_POL_UP]] for the dipole-ratio
 !> note at \( \ell=1 \).
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode axis
@@ -1633,6 +1770,10 @@ CONTAINS
 !> \sqrt{(\ell{+}1)/(2\ell{+}1)}\,\mathbf{Y}_{\ell m}^{(+1)} \). Zero for
 !> \( \ell=0 \) -- see [[VSH_POL_DN]] for the dipole-ratio caveat at
 !> \( \ell=1 \).
+!>
+!> @warning Inherits [[ASSOC_LEGENDRE_NORM_ALL]]'s \(\theta\)-dependent
+!>   stability limit (safe for \( \ell\le2000 \) unconditionally) --
+!>   see `STABILITY_FINDINGS.md` at the repo root.
 !>
 !> @param OUT Output, shape `(3,(LMAX+1)**2)`; component axis is
 !>   `1`=\(\hat r\), `2`=\(\hat\theta\), `3`=\(\hat\phi\); mode axis

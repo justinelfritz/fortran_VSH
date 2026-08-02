@@ -11,9 +11,16 @@ USE BENCHMARK, ONLY: &
 IMPLICIT NONE
 
 INTEGER(KIND=i4), PARAMETER :: NX = 50   !- grid points swept per Lmax
-INTEGER(KIND=i4), PARAMETER :: NLMAX = 7
+!- Capped at 2000 (BATCH_SAFE_LMAX in plot_benchmark.py, matching
+!- STABILITY_FINDINGS.md Part 1) -- no need to spend time computing batch
+!- timings past the range the manuscript figure actually plots. The naive
+!- loop is separately capped inside BENCHMARK (LOOP_LMAX_CAP=200; see
+!- src/benchmark.f90) since its per-measurement cost is O(NX*Lmax^3), not
+!- O(NX*Lmax^2) like batch's, and became a multi-hour runaway at Lmax=4000
+!- before that cap was added.
+INTEGER(KIND=i4), PARAMETER :: NLMAX = 12
 INTEGER(KIND=i4), DIMENSION(NLMAX), PARAMETER :: &
-  LMAX_LIST = (/5, 10, 20, 40, 80, 160, 320/)
+  LMAX_LIST = (/1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 1500, 2000/)
 INTEGER(KIND=i4) :: I
 
 OPEN(UNIT=51, FILE="./benchmark/bench_legendre.dat")
