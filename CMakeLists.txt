@@ -177,9 +177,10 @@ if(VSH_BUILD_EXAMPLES)
   file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/dipole_flux_expulsion")
   file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/vsh_decomposition")
   file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/gwi_gwj_sweep")
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/vsh_decomposition_tor")
 
   foreach(EXAMPLE_NAME dipole_synthesis dipole_uniform_sphere dipole_flux_expulsion
-                       vsh_decomposition gwi_gwj_sweep)
+                       vsh_decomposition gwi_gwj_sweep vsh_decomposition_tor)
     add_executable(${EXAMPLE_NAME} src/examples/${EXAMPLE_NAME}.f90)
     target_link_libraries(${EXAMPLE_NAME} PRIVATE vsh)
     set_target_properties(${EXAMPLE_NAME} PROPERTIES
