@@ -33,7 +33,7 @@ via `pkg-config --cflags --libs FORTVSH`).
 ```bash
 cmake -B build
 cmake --build build
-ctest --test-dir build --output-on-failure
+cd build && ctest --output-on-failure
 ```
 
 ---
@@ -57,7 +57,7 @@ cmake -B build -DVSH_BUILD_SHARED=ON
 cmake --build build
 
 # Run the validation suite
-ctest --test-dir build --output-on-failure
+cd build && ctest --output-on-failure
 ```
 
 Build artifacts:
@@ -250,7 +250,7 @@ spherical component (r, θ, φ).
 The validation suite runs automatically via `ctest`:
 
 ```bash
-ctest --test-dir build --output-on-failure
+cd build && ctest --output-on-failure
 ```
 
 The test executable writes all output to `validation/`. Every output file
@@ -317,7 +317,7 @@ comparison test with:
 ```bash
 cmake -B build -DVSH_REGRESSION_TEST=ON
 cmake --build build
-ctest --test-dir build --output-on-failure
+cd build && ctest --output-on-failure
 ```
 
 This adds a `vsh_regression` ctest that runs `cmake/check_regression.py`,
