@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gfortran cmake pkg-config python3
+            gfortran cmake make pkg-config python3
           gfortran --version
           cmake --version
 
@@ -33,7 +33,10 @@ jobs:
         run: cmake --build build -j"$(nproc)"
 
       - name: Test (vsh_validation + vsh_regression)
-        run: ctest --test-dir build --output-on-failure
+        # cd + ctest, not `ctest --test-dir` -- --test-dir requires CMake
+        # >=3.20 and is a silent no-op (exit 0, "No tests were found!!!")
+        # on older CMake, including the README's stated 3.14 floor.
+        run: cd build && ctest --output-on-failure
 
       - name: Run worked examples
         run: |
