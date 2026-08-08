@@ -5,7 +5,7 @@
 !> pure exterior dipole field. In the normalized units used here
 !> (\( \mu_0/4\pi=1 \), i.e. \( B_{r,ext}=2\mu\cos\theta/r^3 \)), the
 !> magnetic-scalar-potential solution gives the closed-form relation
-!> \( B_0\,(\text{interior uniform field}) = 2\mu/R^3 \). Because there
+!> \( B_0\,(\text{interior uniform field}) = 2\mu/R^3 \). Although there
 !> is no free surface current in this relation's derivation but the
 !> interior/exterior fields are *not* continuous in \( B_\theta \)
 !> (physically: continuity is broken by the sphere's own bound
