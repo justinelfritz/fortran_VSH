@@ -11,6 +11,44 @@ PATCH for bug fixes · MINOR for new API additions · MAJOR for breaking changes
 
 ---
 
+## [0.3.2] — 2026-08-08
+
+### Added
+- `src/examples/vsh_decomposition_tor.f90` (executable `vsh_decomposition_tor`,
+  wired into the `VSH_BUILD_EXAMPLES` option alongside the other five): new
+  worked example decomposing a purely-toroidal field onto the `a_tor` basis —
+  an axisymmetric `(l,m)=(2,0)` quadrupole background plus a broadband
+  equator-centered Gaussian bump, both constructed via the `B = r_hat x
+  grad_perp(T)` recipe so the field is exactly pure-toroidal (`a_rad`/`a_pol`
+  stay at the noise floor throughout) and `B_theta`/`B_phi` vanish exactly at
+  both poles by construction. Companion figures `py/plot_vsh_decomposition_tor.py`
+  (accuracy/convergence), `py/plot_vsh_decomposition_tor_field.py` (3D field
+  visualization), `py/plot_vsh_decomposition_tor_profiles.py` (theta/phi
+  component profiles).
+- `py/plot_gaussian_bump_sphere.py`: 3D sphere visualization of
+  `vsh_decomposition.f90`'s Part B (radial Gaussian bump) target field.
+- `LICENSE`: BSD 3-Clause.
+
+### Fixed
+- `.github/workflows/ci.yml`: added `make` to the installed apt-get
+  dependencies — previously relied silently on the GitHub-hosted runner's
+  preinstalled `build-essential` rather than declaring it explicitly.
+- `.github/workflows/ci.yml`, `README.md` (4 places), `project.md`: replaced
+  `ctest --test-dir build --output-on-failure` with `cd build && ctest
+  --output-on-failure`. `--test-dir` requires CMake >=3.20 and is a silent
+  no-op (reports success, runs zero tests) on older CMake — including this
+  package's own stated 3.14 floor — so the documented/CI test invocation
+  could pass without actually testing anything on the minimum supported
+  toolchain. Verified against a real CMake 3.16.3/gfortran 9.4.0 (Ubuntu
+  20.04) build.
+
+### Changed
+- `project.md`: worked-examples count updated from five to six, now
+  mentioning both the radial (`vsh_decomposition`) and toroidal
+  (`vsh_decomposition_tor`) spectral-decomposition examples.
+
+---
+
 ## [0.3.1] — 2026-08-02
 
 ### Added

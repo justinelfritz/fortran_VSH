@@ -4,7 +4,7 @@ summary: A Fortran library for scalar and vector spherical harmonics (VSH), Lege
 author: Justin G. Elfritz
 email: 45849387+justinelfritz@users.noreply.github.com
 project_github: https://github.com/justinelfritz/FORTVSH
-version: 0.3.1
+version: 0.3.2
 year: 2026
 src_dir: src
 output_dir: docs
@@ -49,16 +49,16 @@ batch `_ALL` form (every mode at one point, in a single call).
   claims in the accompanying manuscript.
 - [[BENCHMARK]] -- timing comparisons between the batch `_ALL` routines
   and naive per-mode loops.
-- `src/examples/` -- five worked examples, from a basic magnetic-dipole
-  synthesis through a full arbitrary-field spectral decomposition and a
-  Geppert-Wiebicke coupling-coefficient sweep.
+- `src/examples/` -- six worked examples, from a basic magnetic-dipole
+  synthesis through arbitrary-field spectral decomposition (both radial
+  and toroidal) and a Geppert-Wiebicke coupling-coefficient sweep.
 
 ## Building
 
 ```bash
 cmake -B build
 cmake --build build
-ctest --test-dir build --output-on-failure
+cd build && ctest --output-on-failure
 ```
 
 See `README.md` in the repository root for the full build, installation,
