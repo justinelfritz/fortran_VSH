@@ -4,7 +4,7 @@ summary: A Fortran library for scalar and vector spherical harmonics (VSH), Lege
 author: Justin G. Elfritz
 email: 45849387+justinelfritz@users.noreply.github.com
 project_github: https://github.com/justinelfritz/FORTVSH
-version: 0.3.2
+version: 1.0.0
 year: 2026
 src_dir: src
 output_dir: docs

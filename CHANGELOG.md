@@ -11,6 +11,29 @@ PATCH for bug fixes · MINOR for new API additions · MAJOR for breaking changes
 
 ---
 
+## [1.0.0] — 2026-08-08
+
+First stable release -- the version described and archived by the
+accompanying GMD manuscript (`\codeavailability`). No breaking changes or
+new API surface relative to 0.3.2; the version number reflects the
+manuscript's own citation of this release rather than a semver-MAJOR
+change in the library itself.
+
+### Fixed
+- `src/examples/gwi_gwj_sweep.f90`: `JMAX` restored from 3 to 6, matching
+  the manuscript's Figure 5 caption and the `.dat` files that figure was
+  actually generated from -- the parameter had reverted (uncommitted)
+  after the figure was produced, so the source no longer reproduced what
+  was published until this fix.
+- `src/vsh.f90`: fixed a stray LaTeX fragment (`\>`) in `CGCOEFF`'s
+  docstring math.
+- `src/examples/dipole_uniform_sphere.f90`: corrected a "Because...but"
+  logical connective in the module docstring to "Although...", removing
+  an ambiguity about which fact causes the interior/exterior field
+  discontinuity at the sphere boundary.
+
+---
+
 ## [0.3.2] — 2026-08-08
 
 ### Added
