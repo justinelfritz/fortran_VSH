@@ -881,7 +881,7 @@ CONTAINS
 !> where \( \Delta(j_1j_2j_3) = \sqrt{\frac{(j_1+j_2-j_3)!(j_2+j_3-j_1)!
 !> (j_3+j_1-j_2)!}{(j_1+j_2+j_3+1)!}} \). Adapted from David Simpson (NASA
 !> GSFC). Automatically returns 0 for any invalid combination -- violated
-!> triangle inequality \( |j_1-j_2|\le j_3\le j_1+j_2 \), \( |m_i|>j_i \>
+!> triangle inequality \( |j_1-j_2|\le j_3\le j_1+j_2 \), \( |m_i|>j_i 
 !> \), or \( m_1+m_2\ne m_3 \) -- so it is always safe to call with an
 !> arbitrary sextuple of integers, e.g. when sweeping a parameter range.
 !>
