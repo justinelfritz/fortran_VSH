@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(FORTVSH
-  VERSION   0.3.2
+  VERSION   1.0.0
   LANGUAGES Fortran C
 )
 
