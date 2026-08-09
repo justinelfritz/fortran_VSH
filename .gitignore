@@ -21,10 +21,12 @@ CTestTestfile.cmake
 /docs/
 
 # Generated output from opt-in CMake targets (VSH_BUILD_BENCHMARK,
-# VSH_BUILD_CONVERGENCE, VSH_BUILD_STABILITY) -- regenerable, not part of ctest
+# VSH_BUILD_CONVERGENCE, VSH_BUILD_STABILITY, VSH_BUILD_ROTATION_STABILITY)
+# -- regenerable, not part of ctest
 /benchmark/
 /convergence/
 /stability/
+/rotation_stability/
 
 # Python bytecode cache
 __pycache__/

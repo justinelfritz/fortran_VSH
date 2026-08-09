@@ -47,7 +47,11 @@ PUBLIC :: &
   VSH_POL_DN, VSH_POL_DN_ALL, &
   VSH_POL_UP, VSH_POL_UP_ALL, &
   ! Coupling coefficients and integrals
-  CGCOEFF, SYMBOL3J, DOT, GWI, GWJ
+  CGCOEFF, SYMBOL3J, DOT, GWI, GWJ, &
+  ! Rotation (Wigner-D matrices)
+  WIGD_INDEX, WIGNER_D_SMALL, WIGNER_D_SMALL_ALL, WIGNER_D, WIGNER_D_ALL, &
+  ROTATE_SSH_ALL, ROTATE_SSH_MODE, &
+  ROTATE_PVSH_ALL, ROTATE_VSH_STD_ALL
 
   ! ── Precision-generic interfaces ──────────────────────────────────────────
   ! Each INTERFACE exposes a generic name that currently dispatches to the
@@ -197,6 +201,39 @@ PUBLIC :: &
     MODULE PROCEDURE GWJ_DP
   END INTERFACE GWJ
 
+  ! -- Rotation (Wigner-D matrices) --
+  INTERFACE WIGNER_D_SMALL
+    MODULE PROCEDURE WIGNER_D_SMALL_DP
+  END INTERFACE WIGNER_D_SMALL
+
+  INTERFACE WIGNER_D_SMALL_ALL
+    MODULE PROCEDURE WIGNER_D_SMALL_ALL_DP
+  END INTERFACE WIGNER_D_SMALL_ALL
+
+  INTERFACE WIGNER_D
+    MODULE PROCEDURE WIGNER_D_DP
+  END INTERFACE WIGNER_D
+
+  INTERFACE WIGNER_D_ALL
+    MODULE PROCEDURE WIGNER_D_ALL_DP
+  END INTERFACE WIGNER_D_ALL
+
+  INTERFACE ROTATE_SSH_ALL
+    MODULE PROCEDURE ROTATE_SSH_ALL_DP
+  END INTERFACE ROTATE_SSH_ALL
+
+  INTERFACE ROTATE_SSH_MODE
+    MODULE PROCEDURE ROTATE_SSH_MODE_DP
+  END INTERFACE ROTATE_SSH_MODE
+
+  INTERFACE ROTATE_PVSH_ALL
+    MODULE PROCEDURE ROTATE_PVSH_ALL_DP
+  END INTERFACE ROTATE_PVSH_ALL
+
+  INTERFACE ROTATE_VSH_STD_ALL
+    MODULE PROCEDURE ROTATE_VSH_STD_ALL_DP
+  END INTERFACE ROTATE_VSH_STD_ALL
+
   ! -- Private generics for internal helpers --
   INTERFACE ASSOC_LEGENDRE_AND_DERIV
     MODULE PROCEDURE ASSOC_LEGENDRE_AND_DERIV_DP
@@ -205,6 +242,10 @@ PUBLIC :: &
   INTERFACE VSH_CORE
     MODULE PROCEDURE VSH_CORE_DP
   END INTERFACE VSH_CORE
+
+  INTERFACE WIGNER_D_SMALL_BLOCK
+    MODULE PROCEDURE WIGNER_D_SMALL_BLOCK_DP
+  END INTERFACE WIGNER_D_SMALL_BLOCK
 
   INTERFACE FACTORIAL
     MODULE PROCEDURE FACTORIAL_DP
@@ -1054,6 +1095,294 @@ CONTAINS
   RETURN
   END FUNCTION SYMBOL3J_DP
 
+!> Wigner "small-d" rotation matrix element \( d^\ell_{m'm}(\beta) \),
+!> the real-valued polar-angle factor of the full complex Wigner-D
+!> rotation matrix [[WIGNER_D]] (\( D^\ell_{m'm}(\alpha,\beta,\gamma) =
+!> e^{-im'\alpha}\,d^\ell_{m'm}(\beta)\,e^{-im\gamma} \)), via Wigner's
+!> explicit finite-sum formula, evaluated in log-factorial form for
+!> numerical stability at large \( \ell \) (see [[LOG_FACT]]), following
+!> the same technique [[CGCOEFF]] uses for its own alternating-sign
+!> finite sum:
+!> $$ d^\ell_{m'm}(\beta) = \sum_k \frac{(-1)^k\sqrt{(\ell{+}m)!(\ell{-}m)!
+!>    (\ell{+}m')!(\ell{-}m')!}}{(\ell{+}m{-}k)!\,k!\,(\ell{-}m'{-}k)!\,
+!>    (m'{-}m{+}k)!}\left(\cos\tfrac\beta2\right)^{2\ell+m-m'-2k}
+!>    \left(\sin\tfrac\beta2\right)^{m'-m+2k}. $$
+!> Automatically returns 0 for \( |m|>\ell \) or \( |m'|>\ell \), so it is
+!> always safe to call with an arbitrary integer triple.
+!>
+!> @warning For \( m',m \) near 0 (the worst case) and \( \beta \) away
+!>   from the poles \( 0,\pi \), individual \( k \)-terms in the sum
+!>   above grow combinatorially large while the true result stays
+!>   \( \le1 \) in magnitude -- catastrophic cancellation, not fixable
+!>   by this function's log-factorial technique alone (that technique
+!>   only prevents any *single* term from over/underflowing; it cannot
+!>   prevent nearly-equal-and-opposite large terms from losing precision
+!>   when summed). Measured directly (see `src/rotation_stability_main.f90`
+!>   and its `./rotation_stability/rotation_stability_map.dat` output):
+!>   near \( \beta=\pi/2 \) (worst case), \( d^\ell_{00} \) develops
+!>   \( \sim10^{-6} \) absolute error by \( \ell\approx34 \) and is
+!>   *visibly* wrong (violates the exact \( |d|\le1 \) bound) by
+!>   \( \ell\approx55 \); near \( \beta\approx0,\pi \) the safe range
+!>   extends past \( \ell\approx120 \). Safe and accurate for every
+!>   \( \ell,m',m,\beta \) combination this codebase's own test suite and
+!>   worked examples use (\( \ell\lesssim10 \)). A fully robust fix would
+!>   need a different algorithm (e.g. a three-term recurrence in \( \ell \)
+!>   for fixed \( m',m \), the standard approach in packages like
+!>   SHTOOLS/pyshtools) rather than this direct-sum formula; not
+!>   implemented here -- flag before relying on this function past
+!>   \( \ell\sim30\text{--}50 \).
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param MP Rotated-frame order, \( -\ell\le m'\le\ell \).
+!> @param M Original-frame order, \( -\ell\le m\le\ell \).
+!> @param BETA Polar rotation angle in radians (the middle Euler angle of
+!>   the \( z\text{-}y\text{-}z \) convention), \( 0\le\beta\le\pi \).
+!> Returns: \( d^\ell_{m'm}(\beta) \), real (0 if \( |m|>\ell \) or
+!>   \( |m'|>\ell \)).
+  FUNCTION WIGNER_D_SMALL_DP(L,MP,M,BETA) RESULT(WIGNER_D_SMALL)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: MP
+  INTEGER(KIND=i4), INTENT(IN) :: M
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  INTEGER(KIND=i4) :: K,KMIN,KMAX
+  REAL(KIND=dp) :: SUMK,TERM,COEF,COSHB,SINHB,PREFACTOR_EXP,WIGNER_D_SMALL
+
+  IF ((ABS(M) .GT. L) .OR. (ABS(MP) .GT. L)) THEN
+    WIGNER_D_SMALL = 0.0d0
+    RETURN
+  END IF
+
+  COSHB = DCOS(0.5d0*BETA)
+  SINHB = DSIN(0.5d0*BETA)
+  ! Kept as a log-space exponent (not exponentiated on its own) and
+  ! combined with -TERM in a single EXP() call below -- computing
+  ! EXP(PREFACTOR_EXP) standalone overflowed (for e.g. L=100, MP=M=0)
+  ! long before the actual per-K ratio EXP(PREFACTOR_EXP-TERM) does,
+  ! since PREFACTOR_EXP and TERM are individually large but nearly
+  ! cancel for most K. Verified this pushes the hard-overflow onset from
+  ! L~100 to L~1040 (MP=M=0 case); see this function's own @warning
+  ! above for the separate, lower (L~30-50), cancellation-driven
+  ! accuracy limit that this change does not fix.
+  PREFACTOR_EXP = 0.5_dp*(LOG_FACT(L+M)+LOG_FACT(L-M)+ &
+              LOG_FACT(L+MP)+LOG_FACT(L-MP))
+
+  SUMK = 0.0_dp
+  KMIN = MAX(0, M-MP)
+  KMAX = MIN(L+M, L-MP)
+  IF (KMIN .LE. KMAX) THEN
+    TERM = LOG_FACT(L+M-KMIN)+LOG_FACT(KMIN)+LOG_FACT(L-MP-KMIN)+ &
+           LOG_FACT(MP-M+KMIN)
+    DO K = KMIN, KMAX
+      COEF = EXP(PREFACTOR_EXP-TERM)*COSHB**(2*L+M-MP-2*K)*SINHB**(MP-M+2*K)
+      IF (MOD(K,2) == 1) THEN
+        SUMK = SUMK - COEF
+      ELSE
+        SUMK = SUMK + COEF
+      END IF
+      IF (K .LT. KMAX) THEN
+        TERM = TERM - LOG(DBLE(L+M-K)) + LOG(DBLE(K+1)) &
+                    - LOG(DBLE(L-MP-K)) + LOG(DBLE(MP-M+K+1))
+      END IF
+    END DO
+  END IF
+  WIGNER_D_SMALL = SUMK
+  RETURN
+  END FUNCTION WIGNER_D_SMALL_DP
+
+!> 1D index for \( (\ell,m',m) \) into the output array of
+!> [[WIGNER_D_SMALL_ALL]]/[[WIGNER_D_ALL]], packing every degree
+!> \( 0\le\ell\le\ell_{max} \) and the full \( -\ell\le m',m\le\ell \)
+!> range contiguously.
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param MP Rotated-frame order, \( -\ell\le m'\le\ell \).
+!> @param M Original-frame order, \( -\ell\le m\le\ell \).
+!> Returns: Index \( \frac{\ell(2\ell-1)(2\ell+1)}{3} + (m'+\ell)(2\ell+1)
+!>   + (m+\ell) + 1 \), \( 1\le\texttt{WIGD\_INDEX}\le
+!>   (\ell_{max}{+}1)(2\ell_{max}{+}1)(2\ell_{max}{+}3)/3 \).
+  FUNCTION WIGD_INDEX(L, MP, M)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: MP
+  INTEGER(KIND=i4), INTENT(IN) :: M
+  INTEGER(KIND=i4) :: WIGD_INDEX
+  WIGD_INDEX = L*(2*L-1)*(2*L+1)/3 + (MP+L)*(2*L+1) + (M+L) + 1
+  END FUNCTION WIGD_INDEX
+
+!> Fills the full \( (2\ell{+}1)\times(2\ell{+}1) \) Wigner small-d block
+!> for one degree \( \ell \) at one angle \( \beta \), by direct
+!> per-entry evaluation via [[WIGNER_D_SMALL]]. Module-internal only (not
+!> part of the public interface): exists so a future coefficient-array
+!> rotation routine can rotate one degree at a time without
+!> materializing every degree simultaneously the way
+!> [[WIGNER_D_SMALL_ALL]] does (see its `@warning`). Matches this
+!> module's existing convention of a private, unexported per-degree
+!> computational core shared by public batch routines (cf. [[VSH_CORE]]).
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 -- this is
+!>   the core every public rotation routine ([[ROTATE_SSH_ALL]] etc.)
+!>   ultimately calls, so that limit propagates to all of them.
+!>
+!> @param DBLOCK Output block, \( \texttt{DBLOCK}(m',m) =
+!>   d^\ell_{m'm}(\beta) \), declared with bounds \( -\ell:\ell,\,
+!>   -\ell:\ell \).
+!> @param L Degree, \( \ell\ge0 \).
+!> @param BETA Polar rotation angle in radians.
+  SUBROUTINE WIGNER_D_SMALL_BLOCK_DP(DBLOCK, L, BETA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(OUT) :: DBLOCK(-L:L,-L:L)
+  INTEGER(KIND=i4) :: MP,M
+  DO M = -L, L
+    DO MP = -L, L
+      DBLOCK(MP,M) = WIGNER_D_SMALL(L,MP,M,BETA)
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_SMALL_BLOCK_DP
+
+!> All Wigner small-d matrix elements \( d^\ell_{m'm}(\beta) \) for
+!> \( 0\le\ell\le\ell_{max} \), \( -\ell\le m',m\le\ell \), at one angle
+!> \( \beta \), via repeated calls to the private per-degree block
+!> builder [[WIGNER_D_SMALL_BLOCK]].
+!>
+!> @warning Materializes every degree simultaneously: output size grows
+!>   as \( \mathcal{O}(\ell_{max}^3) \) (\( \approx \) 576 MB at
+!>   \( \ell_{max}=300 \), this codebase's own convergence-sweep scale).
+!>   A future coefficient-array rotation routine should **not** be built
+!>   on top of this for exactly this reason -- it should call the
+!>   private per-degree block builder directly, one degree at a time.
+!>   Use this routine only when the full multi-degree array is genuinely
+!>   needed at once.
+!>
+!> @warning Also inherits [[WIGNER_D_SMALL]]'s own \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 -- see its
+!>   `@warning` for the measured details.
+!>
+!> @param D Output array, \( \texttt{D}(\texttt{WIGD\_INDEX}(\ell,m',m))
+!>   = d^\ell_{m'm}(\beta) \), size \( (\ell_{max}{+}1)(2\ell_{max}{+}1)
+!>   (2\ell_{max}{+}3)/3 \).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param BETA Polar rotation angle in radians.
+  SUBROUTINE WIGNER_D_SMALL_ALL_DP(D, LMAX, BETA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(OUT) :: D((LMAX+1)*(2*LMAX+1)*(2*LMAX+3)/3)
+  REAL(KIND=dp), ALLOCATABLE :: DBLOCK(:,:)
+  INTEGER(KIND=i4) :: L,MP,M
+  DO L = 0, LMAX
+    ALLOCATE(DBLOCK(-L:L,-L:L))
+    CALL WIGNER_D_SMALL_BLOCK(DBLOCK, L, BETA)
+    DO M = -L, L
+      DO MP = -L, L
+        D(WIGD_INDEX(L,MP,M)) = DBLOCK(MP,M)
+      END DO
+    END DO
+    DEALLOCATE(DBLOCK)
+  END DO
+  END SUBROUTINE WIGNER_D_SMALL_ALL_DP
+
+!> Full complex Wigner-D rotation matrix element
+!> \( D^\ell_{m'm}(\alpha,\beta,\gamma) = e^{-im'\alpha}\,
+!> d^\ell_{m'm}(\beta)\,e^{-im\gamma} \), using the \( z\text{-}y\text{-}z \)
+!> Euler-angle convention of \cite{QTAM} (Varshalovich et al., 1988,
+!> Ch.~4): \( \alpha \) about the original \( z \)-axis, then \( \beta \)
+!> about the new \( y \)-axis, then \( \gamma \) about the newest
+!> \( z \)-axis. A scalar spherical harmonic transforms under this
+!> rotation of the coordinate frame as
+!> \( Y_\ell^m(\theta',\phi') = \sum_{m'} D^{\ell*}_{m'm}(\alpha,\beta,
+!> \gamma)\,Y_\ell^{m'}(\theta,\phi) \), where \( (\theta',\phi') \) are a
+!> fixed physical point's coordinates in the rotated frame and
+!> \( (\theta,\phi) \) its coordinates in the original frame -- so the
+!> expansion coefficients of a fixed field transform the same way with
+!> \( D \) itself (not its conjugate): \( a'_{\ell m'} =
+!> \sum_m D^\ell_{m'm}(\alpha,\beta,\gamma)\,a_{\ell m} \). See
+!> [[WIGNER_D_SMALL]] for the real-valued \( \beta \)-dependent factor.
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 -- see its
+!>   `@warning` for the measured details.
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param MP Rotated-frame order, \( -\ell\le m'\le\ell \).
+!> @param M Original-frame order, \( -\ell\le m\le\ell \).
+!> @param ALPHA First Euler angle in radians (about the original
+!>   \( z \)-axis).
+!> @param BETA Second Euler angle in radians (about the new \( y \)-axis),
+!>   \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians (about the newest
+!>   \( z \)-axis).
+!> Returns: \( D^\ell_{m'm}(\alpha,\beta,\gamma) \), complex.
+  FUNCTION WIGNER_D_DP(L,MP,M,ALPHA,BETA,GAMMA) RESULT(WIGNER_D)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: MP
+  INTEGER(KIND=i4), INTENT(IN) :: M
+  REAL(KIND=dp), INTENT(IN) :: ALPHA
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(IN) :: GAMMA
+  COMPLEX(KIND=dp) :: WIGNER_D
+  WIGNER_D = EXP(-j*MP*ALPHA) * WIGNER_D_SMALL(L,MP,M,BETA) * EXP(-j*M*GAMMA)
+  RETURN
+  END FUNCTION WIGNER_D_DP
+
+!> All Wigner-D matrix elements \( D^\ell_{m'm}(\alpha,\beta,\gamma) \)
+!> for \( 0\le\ell\le\ell_{max} \), \( -\ell\le m',m\le\ell \), at one
+!> Euler-angle triple, via [[WIGNER_D_SMALL_ALL]] scaled by precomputed
+!> \( \alpha \)/\( \gamma \) phase vectors (amortizing the \( \exp \)
+!> evaluations across every degree rather than recomputing per entry).
+!>
+!> @warning Same \( \mathcal{O}(\ell_{max}^3) \) memory-scaling caveat as
+!>   [[WIGNER_D_SMALL_ALL]] -- a future coefficient-array rotation
+!>   routine should not be built on top of this.
+!>
+!> @warning Also inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0.
+!>
+!> @param D Output array, \( \texttt{D}(\texttt{WIGD\_INDEX}(\ell,m',m))
+!>   = D^\ell_{m'm}(\alpha,\beta,\gamma) \), complex, size
+!>   \( (\ell_{max}{+}1)(2\ell_{max}{+}1)(2\ell_{max}{+}3)/3 \).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param ALPHA First Euler angle in radians.
+!> @param BETA Second Euler angle in radians, \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians.
+  SUBROUTINE WIGNER_D_ALL_DP(D, LMAX, ALPHA, BETA, GAMMA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  REAL(KIND=dp), INTENT(IN) :: ALPHA
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(IN) :: GAMMA
+  COMPLEX(KIND=dp), INTENT(OUT) :: D((LMAX+1)*(2*LMAX+1)*(2*LMAX+3)/3)
+  REAL(KIND=dp), ALLOCATABLE :: DSMALL(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: PHASE_MP(:), PHASE_M(:)
+  INTEGER(KIND=i4) :: L,MP,M,NSIZE,IDX
+
+  NSIZE = (LMAX+1)*(2*LMAX+1)*(2*LMAX+3)/3
+  ALLOCATE(DSMALL(NSIZE))
+  CALL WIGNER_D_SMALL_ALL(DSMALL, LMAX, BETA)
+
+  ALLOCATE(PHASE_MP(-LMAX:LMAX), PHASE_M(-LMAX:LMAX))
+  DO MP = -LMAX, LMAX
+    PHASE_MP(MP) = EXP(-j*MP*ALPHA)
+  END DO
+  DO M = -LMAX, LMAX
+    PHASE_M(M) = EXP(-j*M*GAMMA)
+  END DO
+
+  DO L = 0, LMAX
+    DO M = -L, L
+      DO MP = -L, L
+        IDX = WIGD_INDEX(L,MP,M)
+        D(IDX) = PHASE_MP(MP) * DSMALL(IDX) * PHASE_M(M)
+      END DO
+    END DO
+  END DO
+  DEALLOCATE(DSMALL, PHASE_MP, PHASE_M)
+  END SUBROUTINE WIGNER_D_ALL_DP
+
 !     Compute Wigner 6j symbol
 !-----Placeholder for future extension
 
@@ -1806,6 +2135,256 @@ CONTAINS
   END DO
   DEALLOCATE(YLM, GTH, GPH)
   END SUBROUTINE VSH_POL_DN_ALL_DP
+
+!> Rotates a full scalar spherical harmonic coefficient array between
+!> two frames related by the \( z\text{-}y\text{-}z \) Euler angles
+!> \( (\alpha,\beta,\gamma) \): given the coefficients \( a_{\ell m} \)
+!> of a fixed field \( F=\sum_{\ell m}a_{\ell m}Y_\ell^m(\theta,\phi) \)
+!> in the original frame, returns the coefficients \( a'_{\ell m'} \) of
+!> the same field expressed in the rotated frame, \( F=
+!> \sum_{\ell m'}a'_{\ell m'}Y_\ell^{m'}(\theta',\phi') \), via
+!> $$ a'_{\ell m'} = e^{im'\gamma}\sum_m d^\ell_{m'm}(\beta)\,
+!>    e^{im\alpha}\,a_{\ell m}. $$
+!>
+!> @warning This is **not** the same as directly applying [[WIGNER_D]]
+!>   (i.e. \( a'_{m'}\ne\sum_m D_{m'm}(\alpha,\beta,\gamma)\,a_m \) --
+!>   using that naively gives the wrong answer). [[WIGNER_D]] describes
+!>   how the *basis functions* \( Y_\ell^m \) transform under a frame
+!>   rotation; rotating expansion *coefficients* of a fixed field is a
+!>   related but distinct operation (related by a conjugation and a
+!>   swap of which index carries \( \alpha \) versus \( \gamma \)). This
+!>   formula was not assumed -- it was determined by direct comparison
+!>   against an independent, from-scratch ground truth (explicit 3D
+!>   Cartesian rotation of a known field via rotation matrices, then
+!>   numerical quadrature decomposition in the rotated frame, with no
+!>   Wigner-D machinery anywhere in that computation), confirmed exactly
+!>   on two independent test modes before being adopted here.
+!>
+!> For efficiency, computes the real small-d block one degree at a time
+!> via the private [[WIGNER_D_SMALL_BLOCK]] rather than materializing
+!> every degree via [[WIGNER_D_SMALL_ALL]]/[[WIGNER_D_ALL]] (see those
+!> routines' `@warning`).
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 -- safe and
+!>   accurate for every \( \ell \) this codebase's own tests/examples use
+!>   (\( \ell\lesssim10 \)), but not yet suitable for rotating
+!>   high-degree spectra (\( \ell\gtrsim50 \)) without further work; see
+!>   [[WIGNER_D_SMALL]]'s `@warning` for the measured details.
+!>
+!> @param ALM_OUT Output coefficients \( a'_{\ell m'} \), indexed by
+!>   [[YLM_INDEX]], size \( (\ell_{max}{+}1)^2 \).
+!> @param ALM_IN Input coefficients \( a_{\ell m} \), same indexing and
+!>   size (may not alias `ALM_OUT`).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param ALPHA First Euler angle in radians (about the original
+!>   \( z \)-axis).
+!> @param BETA Second Euler angle in radians (about the new \( y \)-axis),
+!>   \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians (about the newest
+!>   \( z \)-axis).
+  SUBROUTINE ROTATE_SSH_ALL_DP(ALM_OUT, ALM_IN, LMAX, ALPHA, BETA, GAMMA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN)  :: LMAX
+  COMPLEX(KIND=dp), INTENT(IN)  :: ALM_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: ALM_OUT((LMAX+1)**2)
+  REAL(KIND=dp),    INTENT(IN)  :: ALPHA
+  REAL(KIND=dp),    INTENT(IN)  :: BETA
+  REAL(KIND=dp),    INTENT(IN)  :: GAMMA
+  REAL(KIND=dp),    ALLOCATABLE :: DBLOCK(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: PHASE_ALPHA(:), PHASE_GAMMA(:)
+  COMPLEX(KIND=dp) :: ACC
+  INTEGER(KIND=i4) :: L,MP,M
+
+  ALLOCATE(PHASE_ALPHA(-LMAX:LMAX), PHASE_GAMMA(-LMAX:LMAX))
+  DO M = -LMAX, LMAX
+    PHASE_ALPHA(M) = EXP(j*M*ALPHA)
+    PHASE_GAMMA(M) = EXP(j*M*GAMMA)
+  END DO
+
+  DO L = 0, LMAX
+    ALLOCATE(DBLOCK(-L:L,-L:L))
+    CALL WIGNER_D_SMALL_BLOCK(DBLOCK, L, BETA)
+    DO MP = -L, L
+      ACC = DCMPLX(0.d0, 0.d0)
+      DO M = -L, L
+        ACC = ACC + DBLOCK(MP,M) * PHASE_ALPHA(M) * ALM_IN(YLM_INDEX(L,M))
+      END DO
+      ALM_OUT(YLM_INDEX(L,MP)) = PHASE_GAMMA(MP) * ACC
+    END DO
+    DEALLOCATE(DBLOCK)
+  END DO
+  DEALLOCATE(PHASE_ALPHA, PHASE_GAMMA)
+  END SUBROUTINE ROTATE_SSH_ALL_DP
+
+!> Rotates one degree's row of scalar spherical harmonic coefficients,
+!> \( a_m\to a'_{m'} \) for one \( \ell \), via the same verified formula
+!> as [[ROTATE_SSH_ALL]] (see its docstring for the full derivation and
+!> the `@warning` about why this is not a direct [[WIGNER_D]]
+!> application). A single-degree convenience/spot-check wrapper --
+!> unlike most single-mode/batch pairs in this module, rotation
+!> inherently needs the *entire* same-degree row to produce even one
+!> output coefficient (there is no cheaper way to get a single
+!> \( a'_{m'} \)), so [[ROTATE_SSH_ALL]], not this routine, is the
+!> primary API; this exists mainly for testing one degree at a time
+!> without allocating a full \( \ell_{max} \) array.
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0.
+!>
+!> @param L Degree, \( \ell\ge0 \).
+!> @param MP Rotated-frame order to return, \( -\ell\le m'\le\ell \).
+!> @param ALM_ROW Input coefficients \( a_m \) for this one degree,
+!>   declared with bounds \( -\ell:\ell \).
+!> @param ALPHA First Euler angle in radians.
+!> @param BETA Second Euler angle in radians, \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians.
+!> Returns: \( a'_{\ell m'} \), complex.
+  FUNCTION ROTATE_SSH_MODE_DP(L,MP,ALM_ROW,ALPHA,BETA,GAMMA) &
+    RESULT(ROTATE_SSH_MODE)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: L
+  INTEGER(KIND=i4), INTENT(IN) :: MP
+  COMPLEX(KIND=dp), INTENT(IN) :: ALM_ROW(-L:L)
+  REAL(KIND=dp), INTENT(IN) :: ALPHA
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(IN) :: GAMMA
+  COMPLEX(KIND=dp) :: ACC,ROTATE_SSH_MODE
+  INTEGER(KIND=i4) :: M
+  ACC = DCMPLX(0.d0, 0.d0)
+  DO M = -L, L
+    ACC = ACC + WIGNER_D_SMALL(L,MP,M,BETA) * EXP(j*M*ALPHA) * ALM_ROW(M)
+  END DO
+  ROTATE_SSH_MODE = EXP(j*MP*GAMMA) * ACC
+  RETURN
+  END FUNCTION ROTATE_SSH_MODE_DP
+
+!> Rotates a full polar-basis VSH coefficient triple
+!> \( (a^{rad}_{\ell m},a^{pol}_{\ell m},a^{tor}_{\ell m}) \) -- the
+!> [[PVSH_RAD]]/[[PVSH_POL]]/[[PVSH_TOR]] coefficients of a fixed vector
+!> field \( \mathbf F=\sum_{\ell m}\left(a^{rad}_{\ell m}\mathbf
+!> Y_{\ell m}^{(-1)}+a^{pol}_{\ell m}\mathbf Y_{\ell m}^{(+1)}+
+!> a^{tor}_{\ell m}\mathbf Y_{\ell m}^{(0)}\right) \) -- between two
+!> frames related by the \( z\text{-}y\text{-}z \) Euler angles
+!> \( (\alpha,\beta,\gamma) \), by applying [[ROTATE_SSH_ALL]]'s verified
+!> formula independently to each of the three families.
+!>
+!> This is valid, with no family-specific correction needed, because
+!> \( \mathbf Y_{JM}^{(\lambda)} \) is built (see Eq.~1-2 of the
+!> accompanying manuscript) by Clebsch-Gordan-coupling an orbital
+!> \( Y_L^M \) with a spin-1 degree of freedom to fixed total angular
+!> momentum \( J \); a fixed-\( J \) multiplet is, by the general
+!> representation theory of the rotation group, an *irreducible*
+!> representation, and therefore transforms under rotation via a single
+!> \( D^J \) acting only on \( M \) -- with \( \lambda \) (equivalently
+!> \( L \)) fixed throughout, exactly as \( \ell \) is fixed throughout
+!> [[ROTATE_SSH_ALL]]. This claim was independently verified (not just
+!> assumed): rotating a full [[PVSH_TOR]]-only coefficient array
+!> (\( 0\le\ell\le3 \), every \( m \)) via this routine reproduces, to
+!> \( \sim10^{-11} \) precision, the spectrum obtained from an entirely
+!> independent computation -- explicit 3D rotation of the physical
+!> vector field (Cartesian components rotated by the corresponding
+!> rotation matrix, not just the evaluation point), followed by fresh
+!> quadrature decomposition in the rotated frame, with no Wigner-D or
+!> [[ROTATE_SSH_ALL]] machinery anywhere in that check -- and confirmed
+!> exactly zero leakage into [[PVSH_RAD]]/[[PVSH_POL]]. A lower-precision
+!> (\( \sim10^{-4} \), quadrature-truncation-limited) version of the same
+!> check runs as part of the ctest suite; see [[ROTATE_PVSH_SPECTRUM_GT]]
+!> in `src/tests.f90`.
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 (via
+!>   [[ROTATE_SSH_ALL]]).
+!>
+!> @param C_RAD_OUT Output [[PVSH_RAD]] coefficients \( a'^{rad}_{\ell m'} \),
+!>   indexed by [[YLM_INDEX]], size \( (\ell_{max}{+}1)^2 \).
+!> @param C_POL_OUT Output [[PVSH_POL]] coefficients, same indexing/size.
+!> @param C_TOR_OUT Output [[PVSH_TOR]] coefficients, same indexing/size.
+!> @param C_RAD_IN Input [[PVSH_RAD]] coefficients \( a^{rad}_{\ell m} \),
+!>   same indexing/size (may not alias `C_RAD_OUT`).
+!> @param C_POL_IN Input [[PVSH_POL]] coefficients (may not alias
+!>   `C_POL_OUT`).
+!> @param C_TOR_IN Input [[PVSH_TOR]] coefficients (may not alias
+!>   `C_TOR_OUT`).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param ALPHA First Euler angle in radians.
+!> @param BETA Second Euler angle in radians, \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians.
+  SUBROUTINE ROTATE_PVSH_ALL_DP(C_RAD_OUT, C_POL_OUT, C_TOR_OUT, &
+                                 C_RAD_IN, C_POL_IN, C_TOR_IN, &
+                                 LMAX, ALPHA, BETA, GAMMA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN)  :: LMAX
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_RAD_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_POL_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_TOR_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_RAD_OUT((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_POL_OUT((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_TOR_OUT((LMAX+1)**2)
+  REAL(KIND=dp),    INTENT(IN)  :: ALPHA
+  REAL(KIND=dp),    INTENT(IN)  :: BETA
+  REAL(KIND=dp),    INTENT(IN)  :: GAMMA
+  CALL ROTATE_SSH_ALL(C_RAD_OUT, C_RAD_IN, LMAX, ALPHA, BETA, GAMMA)
+  CALL ROTATE_SSH_ALL(C_POL_OUT, C_POL_IN, LMAX, ALPHA, BETA, GAMMA)
+  CALL ROTATE_SSH_ALL(C_TOR_OUT, C_TOR_IN, LMAX, ALPHA, BETA, GAMMA)
+  END SUBROUTINE ROTATE_PVSH_ALL_DP
+
+!> Rotates a full standard-basis VSH coefficient triple
+!> \( (a^{tor}_{\ell m},a^{up}_{\ell m},a^{dn}_{\ell m}) \) -- the
+!> [[VSH_TOR]]/[[VSH_POL_UP]]/[[VSH_POL_DN]] coefficients of a fixed
+!> vector field -- between two frames related by the
+!> \( z\text{-}y\text{-}z \) Euler angles \( (\alpha,\beta,\gamma) \), by
+!> applying [[ROTATE_SSH_ALL]]'s verified formula independently to each
+!> of the three families. Valid for exactly the same reason as
+!> [[ROTATE_PVSH_ALL]] (see its docstring): each family is a fixed
+!> total-\( J \) irreducible multiplet, so \( L \) (equivalently which
+!> of `VSH_TOR`/`VSH_POL_UP`/`VSH_POL_DN` a coefficient belongs to)
+!> cannot mix with another under a pure rotation, only \( M \) does.
+!> Independently verified the same way as [[ROTATE_PVSH_ALL]]: rotating
+!> a full [[VSH_POL_UP]]-only coefficient array (\( 0\le\ell\le3 \),
+!> every \( m \) -- nonzero radial *and* horizontal components, unlike
+!> the purely-tangential [[PVSH_TOR]] check) via this routine reproduces
+!> the from-scratch physical-rotation ground truth to \( \sim10^{-11} \)
+!> precision, with exactly zero leakage into [[VSH_TOR]]/[[VSH_POL_DN]].
+!> A lower-precision ctest version of this check is
+!> [[ROTATE_VSH_STD_SPECTRUM_GT]] in `src/tests.f90`.
+!>
+!> @warning Inherits [[WIGNER_D_SMALL]]'s \( \ell\sim30\text{-}50 \)
+!>   cancellation-driven accuracy limit for \( m',m \) near 0 (via
+!>   [[ROTATE_SSH_ALL]]).
+!>
+!> @param C_TOR_OUT Output [[VSH_TOR]] coefficients \( a'^{tor}_{\ell m'} \),
+!>   indexed by [[YLM_INDEX]], size \( (\ell_{max}{+}1)^2 \).
+!> @param C_UP_OUT Output [[VSH_POL_UP]] coefficients, same indexing/size.
+!> @param C_DN_OUT Output [[VSH_POL_DN]] coefficients, same indexing/size.
+!> @param C_TOR_IN Input [[VSH_TOR]] coefficients (may not alias
+!>   `C_TOR_OUT`).
+!> @param C_UP_IN Input [[VSH_POL_UP]] coefficients (may not alias
+!>   `C_UP_OUT`).
+!> @param C_DN_IN Input [[VSH_POL_DN]] coefficients (may not alias
+!>   `C_DN_OUT`).
+!> @param LMAX Maximum degree, \( \ell_{max}\ge0 \).
+!> @param ALPHA First Euler angle in radians.
+!> @param BETA Second Euler angle in radians, \( 0\le\beta\le\pi \).
+!> @param GAMMA Third Euler angle in radians.
+  SUBROUTINE ROTATE_VSH_STD_ALL_DP(C_TOR_OUT, C_UP_OUT, C_DN_OUT, &
+                                    C_TOR_IN, C_UP_IN, C_DN_IN, &
+                                    LMAX, ALPHA, BETA, GAMMA)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN)  :: LMAX
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_TOR_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_UP_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(IN)  :: C_DN_IN((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_TOR_OUT((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_UP_OUT((LMAX+1)**2)
+  COMPLEX(KIND=dp), INTENT(OUT) :: C_DN_OUT((LMAX+1)**2)
+  REAL(KIND=dp),    INTENT(IN)  :: ALPHA
+  REAL(KIND=dp),    INTENT(IN)  :: BETA
+  REAL(KIND=dp),    INTENT(IN)  :: GAMMA
+  CALL ROTATE_SSH_ALL(C_TOR_OUT, C_TOR_IN, LMAX, ALPHA, BETA, GAMMA)
+  CALL ROTATE_SSH_ALL(C_UP_OUT, C_UP_IN, LMAX, ALPHA, BETA, GAMMA)
+  CALL ROTATE_SSH_ALL(C_DN_OUT, C_DN_IN, LMAX, ALPHA, BETA, GAMMA)
+  END SUBROUTINE ROTATE_VSH_STD_ALL_DP
 
 
 END MODULE VSH

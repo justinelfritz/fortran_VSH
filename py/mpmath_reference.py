@@ -2,7 +2,9 @@
 """
 Independent, arbitrary-precision reference implementation of the five
 routine families plotted in the convergence_accuracy figure (Legendre, SSH,
-VSH toroidal, VSH poloidal up/down).
+VSH toroidal, VSH poloidal up/down), plus (added later, for the rotation
+infrastructure's own stability investigation -- see STABILITY_FINDINGS.md
+Part 3) the Wigner small-d rotation matrix.
 
 This exists because src/vsh.f90's "single-mode" functions (SSH, VSH_TOR,
 VSH_POL_UP, VSH_POL_DN) all normalize the *unnormalized* ASSOC_LEGENDRE
@@ -155,6 +157,42 @@ def vsh_pol_up_ref(l, m, theta, phi):
     return (complex(sc_r * y), complex(sc_th * gth), complex(sc_th * gph))
 
 
+def wigner_d_small_ref(l, mp_, m, beta):
+    """
+    Wigner small-d matrix element d^l_{m'm}(beta), independent of
+    src/vsh.f90's WIGNER_D_SMALL_DP. Same closed-form finite-sum formula
+    (Wigner's explicit sum -- see that function's docstring), but
+    evaluated via mpmath's *direct* arbitrary-precision factorials
+    (mp.factorial) rather than WIGNER_D_SMALL_DP's log-factorial/
+    incremental-term-update technique -- that technique exists purely to
+    dodge double-precision overflow, which mpmath's unbounded exponent
+    range doesn't need, so this is a genuinely different code path, not
+    a higher-precision rerun of the same arithmetic sequence (contrast
+    `_legendre_recurrence`, which deliberately *does* replay the same
+    recurrence at higher precision -- see that function's docstring for
+    why that distinction matters there).
+
+    Used by py/plot_wigner_d_error.py as ground truth for characterizing
+    WIGNER_D_SMALL_DP's catastrophic-cancellation accuracy limit at
+    large l (see STABILITY_FINDINGS.md, Part 3).
+    """
+    beta = mp.mpf(beta)
+    coshb = mp.cos(beta / 2)
+    sinhb = mp.sin(beta / 2)
+    prefactor = mp.sqrt(mp.factorial(l + m) * mp.factorial(l - m) *
+                         mp.factorial(l + mp_) * mp.factorial(l - mp_))
+    kmin = max(0, m - mp_)
+    kmax = min(l + m, l - mp_)
+    total = mp.mpf(0)
+    for k in range(kmin, kmax + 1):
+        denom = (mp.factorial(l + m - k) * mp.factorial(k) *
+                  mp.factorial(l - mp_ - k) * mp.factorial(mp_ - m + k))
+        term = prefactor / denom * coshb**(2 * l + m - mp_ - 2 * k) * \
+            sinhb**(mp_ - m + 2 * k)
+        total += term if k % 2 == 0 else -term
+    return float(total)
+
+
 if __name__ == '__main__':
     checks = []
 
@@ -167,6 +205,11 @@ if __name__ == '__main__':
                    mp.sqrt(3 / (4 * mp.pi)) * mp.cos(0.9)))
     checks.append(('N_1^0*P_1^0(0.6)', legendre_norm_ref(1, 0, 0.6),
                    mp.sqrt(3 / (4 * mp.pi)) * 0.6))
+    checks.append(('d^0_00(0.7)', wigner_d_small_ref(0, 0, 0, 0.7), 1.0))
+    checks.append(('d^1_00(0.7)', wigner_d_small_ref(1, 0, 0, 0.7),
+                   mp.cos(0.7)))
+    checks.append(('d^1_10(0.7)', wigner_d_small_ref(1, 1, 0, 0.7),
+                   mp.sin(0.7) / mp.sqrt(2)))
 
     ok = True
     for name, got, expect in checks:
