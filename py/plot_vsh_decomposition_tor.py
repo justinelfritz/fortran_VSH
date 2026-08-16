@@ -10,7 +10,7 @@ shaped in both theta and phi for Part B).
 
 Reads examples/vsh_decomposition_tor/*.dat (produced by the
 vsh_decomposition_tor executable) and writes
-vsh_decomposition_tor_convergence.{pdf,png} to tex/Copernicus-EGU/figures/.
+vsh_decomposition_tor_convergence.{pdf,png} to figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build
@@ -52,20 +52,25 @@ if __name__ == '__main__':
     # toroidal, not just that the known coefficients come back right.
     jitter = 0.22
     ax1.plot(mode_idx-jitter, np.clip(mag_rad, 1e-18, None), 'o', color=BLUE,
-             markersize=4, alpha=0.8, label='radial', zorder=3)
+             markersize=4, alpha=0.8, linestyle='-', label='radial', zorder=3)
     ax1.plot(mode_idx, np.clip(mag_pol, 1e-18, None), 'o', color=ORANGE,
-             markersize=4, alpha=0.8, label='poloidal', zorder=3)
+             markersize=4, alpha=0.8, linestyle='-',label='poloidal', zorder=3)
     ax1.plot(mode_idx+jitter, np.clip(mag_tor, 1e-18, None), 'o', color=AQUA,
-             markersize=4, alpha=0.8, label='toroidal', zorder=3)
+             markersize=4, alpha=0.8, linestyle='--',label='toroidal', zorder=3)
     ax1.set_yscale('log')
     ax1.set_ylim(top=6.0)
-    ax1.set_xlabel('mode index (ordered by l, m)', fontsize=10,
+    ax1.set_xticks([5*i for i in range(0,6)])
+    ax1.set_xticklabels([5*i for i in range(0,6)],fontsize=11,color=INK_SECONDARY)
+    ax1.set_yticks([1.e-16, 1.e-12, 1.e-8, 1.e-4, 1.e0])
+    ax1.set_yticklabels([r'$10^{-16}$', r'$10^{-12}$', r'$10^{-8}$',r'$10^{-4}$', r'$10^{0}$'],fontsize=11,color=INK_SECONDARY)
+    
+    ax1.set_xlabel('mode index (ordered by l, m)', fontsize=11,
                     color=INK_SECONDARY)
-    ax1.set_ylabel('|recovered coefficient|', fontsize=10,
+    ax1.set_ylabel('|recovered coefficient|', fontsize=11,
                     color=INK_SECONDARY)
     ax1.set_title('Part A: known-mode recovery (8 toroidal modes, l<=2)',
                   color=INK_PRIMARY, fontsize=11)
-    ax1.legend(frameon=False, fontsize=8.5, labelcolor=INK_SECONDARY, ncol=2,
+    ax1.legend(frameon=True, fontsize=10, labelcolor=INK_SECONDARY, ncol=2,
                loc='center right')
 
     style_axes(ax2)
@@ -73,8 +78,13 @@ if __name__ == '__main__':
               marker='o', markersize=6, linewidth=2, solid_capstyle='round',
               zorder=3)
     ax2.set_yscale('log')
-    ax2.set_xlabel(r'$L_{max}$ retained', fontsize=10, color=INK_SECONDARY)
-    ax2.set_ylabel('max reconstruction error', fontsize=10,
+    ax2.set_xticks([5*i for i in range(1,7)])
+    ax2.set_xticklabels([5*i for i in range(1,7)],fontsize=11,color=INK_SECONDARY)
+    ax2.set_yticks([1.e-5, 1.e-4, 1.e-3, 1.e-2, 1.e-1, 1.e-0])
+    ax2.set_yticklabels([r'$10^{-5}$', r'$10^{-4}$', r'$10^{-3}$',r'$10^{-2}$', r'$10^{-1}$', r'$10^{-0}$'],fontsize=11,color=INK_SECONDARY)
+    
+    ax2.set_xlabel(r'$L_{max}$ retained', fontsize=11, color=INK_SECONDARY)
+    ax2.set_ylabel('max reconstruction error', fontsize=11,
                     color=INK_SECONDARY)
     ax2.set_title('Part B: spectral truncation convergence\n'
                   '(quadrupole + toroidal Gaussian bump)', color=INK_PRIMARY,

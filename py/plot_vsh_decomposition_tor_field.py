@@ -45,8 +45,10 @@ the quadrupole's presence is still visible in the background color as a
 band peaking at mid-latitudes (~sin(theta)cos(theta)), vanishing at both
 the poles and the equator.
 
-PNG only (no companion PDF), matching plot_gaussian_bump_sphere.py's
-one-off-illustrative-figure convention.
+Exported as a matched PDF/PNG pair via plotstyle.savefig_pair (PDF for the
+manuscript's \\includegraphics, PNG for quick viewing) -- unlike
+plot_gaussian_bump_sphere.py's one-off-illustrative-figure convention,
+this one is included directly in FORTVSH.tex, which needs the PDF.
 
 Run from the project root:
     python3 py/plot_vsh_decomposition_tor_field.py
@@ -73,7 +75,8 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: E402
 import matplotlib.projections as _projections  # noqa: E402
 _projections.register_projection(Axes3D)
 
-from plotstyle import SURFACE, INK_PRIMARY, INK_MUTED, GRIDLINE, MAGENTA  # noqa: E402
+from plotstyle import SURFACE, INK_PRIMARY, INK_SECONDARY, INK_MUTED, GRIDLINE, MAGENTA, \
+    savefig_pair  # noqa: E402
 
 SIGMA = 0.4
 A_QUAD = 1.0
@@ -178,13 +181,13 @@ def plot_field():
     mappable = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
     mappable.set_array(magnitude)
     cbar = fig.colorbar(mappable, ax=ax, shrink=0.55, pad=0.06)
-    cbar.set_label('|B| (field magnitude)', color=INK_PRIMARY, fontsize=10)
-    cbar.ax.tick_params(colors=INK_PRIMARY, labelsize=8)
+    cbar.set_label('|B| (field magnitude)', color=INK_PRIMARY, fontsize=14)
+    cbar.ax.tick_params(colors=INK_PRIMARY, labelsize=12)
 
     ax.set_title(
         'Part B target field: quadrupole + toroidal Gaussian bump\n'
         'color = |B|, arrows = Re(B) local direction',
-        color=INK_PRIMARY, fontsize=11)
+        color=INK_PRIMARY, fontsize=14)
     # Coordinate box (panes + ticks + labels) instead of a bare floating
     # sphere -- gives a visual sense of scale/orientation. Panes and grid
     # lines styled to match the project's light chrome rather than
@@ -194,19 +197,18 @@ def plot_field():
         axis.pane.set_edgecolor(GRIDLINE)
         axis._axinfo['grid']['color'] = GRIDLINE
         axis._axinfo['grid']['linewidth'] = 0.6
-    ax.set_xlabel('x', color=INK_PRIMARY, fontsize=9)
-    ax.set_ylabel('y', color=INK_PRIMARY, fontsize=9)
-    ax.set_zlabel('z', color=INK_PRIMARY, fontsize=9)
-    ax.tick_params(colors=INK_MUTED, labelsize=7)
+    ax.set_xlabel('x', color=INK_PRIMARY, fontsize=12)
+    ax.set_ylabel('y', color=INK_PRIMARY, fontsize=12)
+    ax.set_zlabel('z', color=INK_PRIMARY, fontsize=12)
+    ax.set_xticks([-1 + 0.5*i for i in range(0,5)])
+    ax.set_yticks([-1 + 0.5*i for i in range(0,5)])
+    ax.set_zticks([-1 + 0.5*i for i in range(0,5)])
+    ax.tick_params(colors=INK_SECONDARY, labelsize=12)
     ax.set_box_aspect([1, 1, 1])
     ax.view_init(elev=20, azim=40)
 
     fig.tight_layout()
-    outpath = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'tex', 'Copernicus-EGU', 'figures', 'vsh_decomposition_tor_field.png')
-    fig.savefig(outpath, dpi=200, facecolor=SURFACE, bbox_inches='tight')
-    print(f'Wrote {outpath}')
+    savefig_pair(fig, 'vsh_decomposition_tor_field')
 
 
 if __name__ == '__main__':

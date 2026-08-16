@@ -5,7 +5,7 @@ recovery (Part A) and spectral truncation convergence (Part B).
 
 Reads examples/vsh_decomposition/*.dat (produced by the vsh_decomposition
 executable) and writes vsh_decomposition_convergence.{pdf,png} to
-tex/Copernicus-EGU/figures/.
+figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

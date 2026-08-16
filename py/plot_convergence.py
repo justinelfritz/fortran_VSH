@@ -155,13 +155,17 @@ def plot_convergence():
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.set_xlim(0.9, SAFE_LMAX * 1.15)
-        ax.set_xlabel(r'$\ell$', fontsize=9, color=INK_SECONDARY)
-        ax.set_title(title, color=INK_PRIMARY, fontsize=10)
+        ax.set_xlabel(r'$\ell$', fontsize=12, color=INK_SECONDARY)
+        ax.set_xticks([1.0, 10.0, 100.0, 1000.0])
+        ax.set_xticklabels([r'$10^{0}$', r'$10^{1}$', r'$10^{2}$', r'$10^{3}$'],fontsize=11,color=INK_SECONDARY)
+        ax.set_yticks([1.e-16, 1.e-15,1.e-14, 1.e-13, 1.e-12])
+        ax.set_yticklabels([r'$10^{-16}$', r'$10^{-15}$',r'$10^{-14}$', r'$10^{-13}$', r'$10^{-12}$'],fontsize=11,color=INK_SECONDARY)
+        ax.set_title(title, color=INK_PRIMARY, fontsize=11)
     axes[0].set_ylabel('max abs error vs.\nindependent (mpmath) reference',
-                        fontsize=9, color=INK_SECONDARY)
+                        fontsize=11, color=INK_SECONDARY)
     fig.suptitle('Normalized batch routines (ASSOC_LEGENDRE_NORM_ALL, '
                  'SSH_ALL, VSH_*_ALL), verified-safe range',
-                 color=INK_PRIMARY, fontsize=11, y=1.02)
+                 color=INK_PRIMARY, fontsize=12, y=1.02)
     fig.tight_layout()
     savefig_pair(fig, 'convergence_accuracy')
 
