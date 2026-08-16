@@ -1,9 +1,9 @@
 !> Driver for the full [[TESTS]] validation suite (run via `ctest`, target
-!> `vsh_validation`): runs every cross-validation, batch-consistency, and
-!> identity check in [[TESTS]], writes each one's full per-point data to
-!> `./validation/*.dat`, prints a `PASS`/`FAIL` line per check, and exits
-!> non-zero if any check failed (the signal `ctest` uses for a
-!> pass/fail build gate).
+!> `vsh_validation`): runs every cross-validation, batch-consistency,
+!> identity, and Wigner-D/rotation check in [[TESTS]], writes each one's
+!> full per-point data to `./validation/*.dat`, prints a `PASS`/`FAIL`
+!> line per check, and exits non-zero if any check failed (the signal
+!> `ctest` uses for a pass/fail build gate).
 PROGRAM MAIN
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi
@@ -14,7 +14,12 @@ USE TESTS,   ONLY: &
   SSH_ORTHO, BATCH_GRAD_SSH_CONS, BATCH_L_SSH_CONS, &
   BATCH_PVSH_RAD_CONS, BATCH_PVSH_POL_CONS, BATCH_PVSH_TOR_CONS, &
   BATCH_VSH_TOR_CONS, BATCH_VSH_POL_UP_CONS, BATCH_VSH_POL_DN_CONS, &
-  PVSH_POL_TOR_ORTHO, VSH_POL_INVERSION
+  PVSH_POL_TOR_ORTHO, VSH_POL_INVERSION, &
+  WIGNER_D_SMALL_IDENTITY, WIGNER_D_SMALL_SYMMETRY, &
+  WIGNER_D_IDENTITY, WIGNER_D_UNITARITY, WIGNER_D_COMPOSITION, &
+  ROTATE_SSH_INVERSION, ROTATE_PVSH_INVERSION, ROTATE_VSH_STD_INVERSION, &
+  ROTATE_PVSH_SPECTRUM_GT, ROTATE_VSH_STD_SPECTRUM_GT, &
+  WIGNER_D_SPOTCHECK
 IMPLICIT NONE
 
 INTEGER(KIND=i4) :: NTHETA, I, STATUS, N_FAIL
@@ -217,6 +222,112 @@ IF (STATUS /= 0) THEN
 ELSE
   WRITE(*,'(A)') "PASS  vsh_pol_inversion"
 END IF
+
+! ── Wigner-D / rotation validation ──────────────────────────────────────────────
+OPEN(UNIT=41, FILE="./validation/wigner_d_small_identity.dat")
+CALL WIGNER_D_SMALL_IDENTITY(6, 41, STATUS)
+CLOSE(41)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  wigner_d_small_identity"
+ELSE
+  WRITE(*,'(A)') "PASS  wigner_d_small_identity"
+END IF
+
+OPEN(UNIT=42, FILE="./validation/wigner_d_small_symmetry.dat")
+CALL WIGNER_D_SMALL_SYMMETRY(6, 42, STATUS)
+CLOSE(42)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  wigner_d_small_symmetry"
+ELSE
+  WRITE(*,'(A)') "PASS  wigner_d_small_symmetry"
+END IF
+
+OPEN(UNIT=43, FILE="./validation/wigner_d_identity.dat")
+CALL WIGNER_D_IDENTITY(6, 43, STATUS)
+CLOSE(43)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  wigner_d_identity"
+ELSE
+  WRITE(*,'(A)') "PASS  wigner_d_identity"
+END IF
+
+OPEN(UNIT=44, FILE="./validation/wigner_d_unitarity.dat")
+CALL WIGNER_D_UNITARITY(6, 44, STATUS)
+CLOSE(44)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  wigner_d_unitarity"
+ELSE
+  WRITE(*,'(A)') "PASS  wigner_d_unitarity"
+END IF
+
+OPEN(UNIT=45, FILE="./validation/wigner_d_composition.dat")
+CALL WIGNER_D_COMPOSITION(6, 45, STATUS)
+CLOSE(45)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  wigner_d_composition"
+ELSE
+  WRITE(*,'(A)') "PASS  wigner_d_composition"
+END IF
+
+OPEN(UNIT=46, FILE="./validation/rotate_ssh_inversion.dat")
+CALL ROTATE_SSH_INVERSION(6, 46, STATUS)
+CLOSE(46)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  rotate_ssh_inversion"
+ELSE
+  WRITE(*,'(A)') "PASS  rotate_ssh_inversion"
+END IF
+
+OPEN(UNIT=47, FILE="./validation/rotate_pvsh_inversion.dat")
+CALL ROTATE_PVSH_INVERSION(6, 47, STATUS)
+CLOSE(47)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  rotate_pvsh_inversion"
+ELSE
+  WRITE(*,'(A)') "PASS  rotate_pvsh_inversion"
+END IF
+
+OPEN(UNIT=48, FILE="./validation/rotate_vsh_std_inversion.dat")
+CALL ROTATE_VSH_STD_INVERSION(6, 48, STATUS)
+CLOSE(48)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  rotate_vsh_std_inversion"
+ELSE
+  WRITE(*,'(A)') "PASS  rotate_vsh_std_inversion"
+END IF
+
+OPEN(UNIT=49, FILE="./validation/rotate_pvsh_spectrum_gt.dat")
+CALL ROTATE_PVSH_SPECTRUM_GT(3, 200, 32, 49, STATUS)
+CLOSE(49)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  rotate_pvsh_spectrum_gt"
+ELSE
+  WRITE(*,'(A)') "PASS  rotate_pvsh_spectrum_gt"
+END IF
+
+OPEN(UNIT=50, FILE="./validation/rotate_vsh_std_spectrum_gt.dat")
+CALL ROTATE_VSH_STD_SPECTRUM_GT(3, 200, 32, 50, STATUS)
+CLOSE(50)
+IF (STATUS /= 0) THEN
+  N_FAIL = N_FAIL + 1
+  WRITE(*,'(A)') "FAIL  rotate_vsh_std_spectrum_gt"
+ELSE
+  WRITE(*,'(A)') "PASS  rotate_vsh_std_spectrum_gt"
+END IF
+
+OPEN(UNIT=51, FILE="./validation/wigner_d_spotcheck.dat")
+CALL WIGNER_D_SPOTCHECK(51)
+CLOSE(51)
+WRITE(*,'(A)') "WROTE wigner_d_spotcheck (cross-check via py/sympy_reference.py)"
 
 ! ── Summary ──────────────────────────────────────────────────────────────────
 IF (N_FAIL > 0) THEN

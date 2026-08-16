@@ -22,6 +22,22 @@
 !> per-point data to `OUTUNIT`, driven from `src/main.f90` -- the same
 !> data that feeds the manuscript's convergence figures via
 !> `py/compute_validation.py`.
+!>
+!> 4. **Wigner-D rotation infrastructure** ([[WIGNER_D_SMALL_IDENTITY]]
+!>    through [[ROTATE_VSH_STD_SPECTRUM_GT]]): algebraic identities of
+!>    the small-d/D-matrices themselves (identity angle, symmetries,
+!>    unitarity, group composition), coefficient-array round-trip
+!>    inversion for all three rotation entry points
+!>    ([[ROTATE_SSH_ALL]]/[[ROTATE_PVSH_ALL]]/[[ROTATE_VSH_STD_ALL]]),
+!>    and -- the strongest check in this file -- an end-to-end
+!>    from-scratch ground truth
+!>    ([[ROTATE_PVSH_SPECTRUM_GT]]/[[ROTATE_VSH_STD_SPECTRUM_GT]])
+!>    that physically rotates a synthesized VSH field in Cartesian
+!>    space (independent 3x3 rotation matrix, independent
+!>    spherical/Cartesian reprojection, no Wigner-D machinery in the
+!>    comparison path) and re-decomposes it by direct quadrature,
+!>    confirming that coefficient-space rotation via the library's own
+!>    engine agrees with physically rotating the field it represents.
 MODULE TESTS
 USE KINDS,   ONLY: dp, i4
 USE GLOBALS, ONLY: pi, j
@@ -37,7 +53,9 @@ USE VSH,     ONLY: &
   VSH_TOR, VSH_TOR_ALL, &
   VSH_POL_DN, VSH_POL_DN_ALL, &
   VSH_POL_UP, VSH_POL_UP_ALL, &
-  DOT, GWI, GWJ
+  DOT, GWI, GWJ, &
+  WIGNER_D_SMALL, WIGNER_D, &
+  ROTATE_SSH_ALL, ROTATE_PVSH_ALL, ROTATE_VSH_STD_ALL
 IMPLICIT NONE
 PRIVATE
 PUBLIC :: &
@@ -50,7 +68,13 @@ PUBLIC :: &
   BATCH_PVSH_RAD_CONS, BATCH_PVSH_POL_CONS, BATCH_PVSH_TOR_CONS, &
   BATCH_VSH_TOR_CONS, BATCH_VSH_POL_UP_CONS, BATCH_VSH_POL_DN_CONS, &
   ! Orthogonality and inversion validation
-  SSH_ORTHO, PVSH_POL_TOR_ORTHO, VSH_POL_INVERSION
+  SSH_ORTHO, PVSH_POL_TOR_ORTHO, VSH_POL_INVERSION, &
+  ! Wigner-D / rotation validation
+  WIGNER_D_SMALL_IDENTITY, WIGNER_D_SMALL_SYMMETRY, &
+  WIGNER_D_IDENTITY, WIGNER_D_UNITARITY, WIGNER_D_COMPOSITION, &
+  ROTATE_SSH_INVERSION, ROTATE_PVSH_INVERSION, ROTATE_VSH_STD_INVERSION, &
+  ROTATE_PVSH_SPECTRUM_GT, ROTATE_VSH_STD_SPECTRUM_GT, &
+  WIGNER_D_SPOTCHECK
 
 CONTAINS
 
@@ -939,6 +963,831 @@ CONTAINS
   END DO
   DEALLOCATE(UP, DN, POL, RAD)
   END SUBROUTINE VSH_POL_INVERSION
+
+
+! ── Rotation test scaffolding (module-internal only) ──────────────────────────
+! Small helpers shared by the Wigner-D/rotation checks below. None of these
+! reuse any rotation logic from [[VSH]] -- the whole point of
+! [[ROTATE_PVSH_SPECTRUM_GT]]/[[ROTATE_VSH_STD_SPECTRUM_GT]] is an
+! independent, from-scratch ground truth, so the Cartesian rotation matrix
+! and the spherical/Cartesian reprojection here are built directly from
+! their own definitions, not delegated to [[WIGNER_D]]/[[WIGNER_D_SMALL]].
+
+!> Builds the Cartesian rotation matrix for the \( z\text{-}y\text{-}z \)
+!> Euler convention used throughout [[VSH]]'s Wigner-D machinery,
+!> \( R=R_z(\alpha)R_y(\beta)R_z(\gamma) \). Independent of
+!> [[WIGNER_D]]/[[WIGNER_D_SMALL]] -- exists purely so
+!> [[ROTATE_PVSH_SPECTRUM_GT]]/[[ROTATE_VSH_STD_SPECTRUM_GT]] can
+!> physically rotate a Cartesian vector field without going anywhere near
+!> the coefficient-space machinery being tested.
+!>
+!> @param ALPHA First Euler angle in radians.
+!> @param BETA Second Euler angle in radians.
+!> @param GAMMA Third Euler angle in radians.
+!> Returns: The \( 3\times3 \) real rotation matrix \( R \).
+  FUNCTION EULER_ROTATION_MATRIX(ALPHA, BETA, GAMMA) RESULT(R)
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN) :: ALPHA
+  REAL(KIND=dp), INTENT(IN) :: BETA
+  REAL(KIND=dp), INTENT(IN) :: GAMMA
+  REAL(KIND=dp) :: CA, SA, CB, SB, CG, SG
+  REAL(KIND=dp) :: RZ1(3,3), RY(3,3), RZ2(3,3), R(3,3)
+  CA = DCOS(ALPHA); SA = DSIN(ALPHA)
+  CB = DCOS(BETA);  SB = DSIN(BETA)
+  CG = DCOS(GAMMA); SG = DSIN(GAMMA)
+  RZ1 = RESHAPE([CA,SA,0.0_dp, -SA,CA,0.0_dp, 0.0_dp,0.0_dp,1.0_dp], [3,3])
+  RY  = RESHAPE([CB,0.0_dp,-SB, 0.0_dp,1.0_dp,0.0_dp, SB,0.0_dp,CB], [3,3])
+  RZ2 = RESHAPE([CG,SG,0.0_dp, -SG,CG,0.0_dp, 0.0_dp,0.0_dp,1.0_dp], [3,3])
+  R = MATMUL(RZ1, MATMUL(RY, RZ2))
+  END FUNCTION EULER_ROTATION_MATRIX
+
+!> Local spherical unit vectors \( (\hat r,\hat\theta,\hat\phi) \) in
+!> Cartesian components at a point \( (\theta,\phi) \) -- the same
+!> convention as every VSH basis function's \( (r,\theta,\phi) \)
+!> component ordering, used here only to move between that local basis
+!> and global Cartesian coordinates for the ground-truth rotation checks.
+!>
+!> @param THETA Colatitude in radians.
+!> @param PHI Longitude in radians.
+!> @param RHAT Output radial unit vector, Cartesian.
+!> @param THHAT Output colatitude unit vector, Cartesian.
+!> @param PHHAT Output longitude unit vector, Cartesian.
+  SUBROUTINE SPH_UNIT_VECTORS(THETA, PHI, RHAT, THHAT, PHHAT)
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN)  :: THETA
+  REAL(KIND=dp), INTENT(IN)  :: PHI
+  REAL(KIND=dp), INTENT(OUT) :: RHAT(3)
+  REAL(KIND=dp), INTENT(OUT) :: THHAT(3)
+  REAL(KIND=dp), INTENT(OUT) :: PHHAT(3)
+  REAL(KIND=dp) :: ST, CT, SP, CP
+  ST = DSIN(THETA); CT = DCOS(THETA)
+  SP = DSIN(PHI);   CP = DCOS(PHI)
+  RHAT  = [ST*CP, ST*SP, CT]
+  THHAT = [CT*CP, CT*SP, -ST]
+  PHHAT = [-SP, CP, 0.0_dp]
+  END SUBROUTINE SPH_UNIT_VECTORS
+
+!> Inverse of [[SPH_UNIT_VECTORS]]'s point map: recovers
+!> \( (\theta,\phi) \) from a (not-necessarily-unit) Cartesian vector,
+!> with \( \phi \) wrapped to \( [0,2\pi) \) to match [[VSH]]'s own
+!> convention.
+!>
+!> @param V Input Cartesian vector (normalized internally).
+!> @param THETA Output colatitude in radians, \( 0\le\theta\le\pi \).
+!> @param PHI Output longitude in radians, \( 0\le\phi<2\pi \).
+  SUBROUTINE CART_TO_SPH(V, THETA, PHI)
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN)  :: V(3)
+  REAL(KIND=dp), INTENT(OUT) :: THETA
+  REAL(KIND=dp), INTENT(OUT) :: PHI
+  REAL(KIND=dp) :: VN(3), NORM
+  NORM = DSQRT(V(1)**2 + V(2)**2 + V(3)**2)
+  VN = V / NORM
+  THETA = DACOS(MAX(-1.0_dp, MIN(1.0_dp, VN(3))))
+  PHI = DATAN2(VN(2), VN(1))
+  IF (PHI < 0.0_dp) PHI = PHI + 2.0_dp*pi
+  END SUBROUTINE CART_TO_SPH
+
+!> Applies a real \( 3\times3 \) matrix to a complex 3-vector by explicit
+!> summation (deliberately not the `MATMUL` intrinsic, to avoid relying
+!> on mixed real/complex argument promotion across compilers -- this
+!> file's minimum-toolchain target is gfortran 9, see `README.md`).
+!>
+!> @param RMAT Real \( 3\times3 \) matrix.
+!> @param V Complex 3-vector.
+!> Returns: \( \texttt{RMAT}\cdot V \), complex 3-vector.
+  FUNCTION ROTATE_CVEC3(RMAT, V) RESULT(RV)
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN) :: RMAT(3,3)
+  COMPLEX(KIND=dp), INTENT(IN) :: V(3)
+  COMPLEX(KIND=dp) :: RV(3)
+  INTEGER(KIND=i4) :: I
+  DO I = 1, 3
+    RV(I) = RMAT(I,1)*V(1) + RMAT(I,2)*V(2) + RMAT(I,3)*V(3)
+  END DO
+  END FUNCTION ROTATE_CVEC3
+
+!> \( (-1)^N \), computed via `MOD(ABS(N),2)` so negative `N` (common
+!> throughout the \( m\)-index alternating-sign identities below) is
+!> handled portably rather than relying on integer exponentiation to a
+!> negative power.
+!>
+!> @param N Integer exponent (any sign).
+!> Returns: \( +1 \) if `N` is even, \( -1 \) if `N` is odd.
+  FUNCTION ALT_SIGN(N) RESULT(S)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: N
+  REAL(KIND=dp) :: S
+  IF (MOD(ABS(N), 2) .EQ. 0) THEN
+    S = 1.0_dp
+  ELSE
+    S = -1.0_dp
+  END IF
+  END FUNCTION ALT_SIGN
+
+
+! ── Wigner-D / rotation validation ─────────────────────────────────────────────
+
+!> Verifies \( d^\ell_{m'm}(0)=\delta_{m'm} \) -- rotating by zero angle
+!> about \( y \) is the identity -- for every \( 0\le\ell\le\ell_{max},\,
+!> -\ell\le m',m\le\ell \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L MP
+!>   M value expected(0_or_1)`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `|value-expected| >
+!>   1e-12`).
+  SUBROUTINE WIGNER_D_SMALL_IDENTITY(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, MP, M, EXPECTED
+  REAL(KIND=dp) :: VAL
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') '# L  MP  M  value  expected'
+  DO L = 0, LMAX
+    DO MP = -L, L
+      DO M = -L, L
+        VAL = WIGNER_D_SMALL(L, MP, M, 0.0_dp)
+        IF (MP .EQ. M) THEN
+          EXPECTED = 1
+        ELSE
+          EXPECTED = 0
+        END IF
+        WRITE(OUTUNIT, *) L, MP, M, VAL, EXPECTED
+        IF (ABS(VAL - EXPECTED) > 1.0E-12_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_SMALL_IDENTITY
+
+
+!> Verifies the small-d matrix's exact symmetries,
+!> \( d^\ell_{m'm}(\beta)=(-1)^{m'-m}d^\ell_{m,m'}(\beta)=
+!> d^\ell_{-m,-m'}(\beta) \), swept over five representative
+!> \( \beta \) (including \( \beta=\pi \), where the additional special
+!> value \( d^\ell_{m'm}(\pi)=(-1)^{\ell-m}\delta_{m',-m} \) is also
+!> checked).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L MP
+!>   M beta absdiff_flip absdiff_negate absdiff_pi_special`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some difference \( >10^{-12}
+!>   \)).
+  SUBROUTINE WIGNER_D_SMALL_SYMMETRY(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, MP, M, IB
+  REAL(KIND=dp) :: BETA, D1, D2, D3
+  REAL(KIND=dp) :: DIFF_FLIP, DIFF_NEG, DIFF_PI
+  REAL(KIND=dp), DIMENSION(5) :: BETAS
+  BETAS = [0.3_dp, 1.0_dp, 2.0_dp, pi/2.0_dp, pi]
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') &
+      '# L  MP  M  beta  absdiff_flip  absdiff_negate  absdiff_pi_special'
+  DO IB = 1, 5
+    BETA = BETAS(IB)
+    DO L = 0, LMAX
+      DO MP = -L, L
+        DO M = -L, L
+          D1 = WIGNER_D_SMALL(L, MP, M, BETA)
+          D2 = WIGNER_D_SMALL(L, M, MP, BETA) * ALT_SIGN(MP-M)
+          D3 = WIGNER_D_SMALL(L, -M, -MP, BETA)
+          DIFF_FLIP = ABS(D1 - D2)
+          DIFF_NEG  = ABS(D1 - D3)
+          DIFF_PI = 0.0_dp
+          IF (ABS(BETA-pi) < 1.0E-12_dp) THEN
+            IF (MP .EQ. -M) THEN
+              DIFF_PI = ABS(D1 - ALT_SIGN(L-M))
+            ELSE
+              DIFF_PI = ABS(D1)
+            END IF
+          END IF
+          WRITE(OUTUNIT, *) L, MP, M, BETA, DIFF_FLIP, DIFF_NEG, DIFF_PI
+          IF (DIFF_FLIP > 1.0E-12_dp .OR. DIFF_NEG > 1.0E-12_dp .OR. &
+              DIFF_PI > 1.0E-12_dp) STATUS = 1
+        END DO
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_SMALL_SYMMETRY
+
+
+!> Verifies \( D^\ell_{m'm}(0,0,0)=\delta_{m'm} \) -- the zero rotation is
+!> the identity element of the full complex D-matrix -- for every
+!> \( 0\le\ell\le\ell_{max} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L MP
+!>   M re(value) im(value) expected(0_or_1)`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `|value-expected| >
+!>   1e-12`).
+  SUBROUTINE WIGNER_D_IDENTITY(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, MP, M, EXPECTED
+  COMPLEX(KIND=dp) :: VAL
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') '# L  MP  M  re(value)  im(value)  expected'
+  DO L = 0, LMAX
+    DO MP = -L, L
+      DO M = -L, L
+        VAL = WIGNER_D(L, MP, M, 0.0_dp, 0.0_dp, 0.0_dp)
+        IF (MP .EQ. M) THEN
+          EXPECTED = 1
+        ELSE
+          EXPECTED = 0
+        END IF
+        WRITE(OUTUNIT, *) L, MP, M, DREAL(VAL), DIMAG(VAL), EXPECTED
+        IF (ABS(VAL - EXPECTED) > 1.0E-12_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_IDENTITY
+
+
+!> Verifies \( D^\ell(\alpha,\beta,\gamma) \) is unitary,
+!> \( \sum_{m'}\overline{D^\ell_{m'm_1}}\,D^\ell_{m'm_2}=\delta_{m_1m_2}
+!> \), for four representative \( (\alpha,\beta,\gamma) \) triples
+!> (including \( \beta=\pi \)) and every \( 0\le\ell\le\ell_{max} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M1
+!>   M2 alpha beta gamma absdiff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-12`).
+  SUBROUTINE WIGNER_D_UNITARITY(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, M1, M2, MP, IT, EXPECTED
+  REAL(KIND=dp) :: ALPHA, BETA, GAMMA, DIFF
+  REAL(KIND=dp), DIMENSION(4) :: ALPHAS, BETAS, GAMMAS
+  COMPLEX(KIND=dp) :: ACC
+  ALPHAS = [0.4_dp, 1.9_dp, pi/5.0_dp, 0.0_dp]
+  BETAS  = [0.7_dp, 2.6_dp, pi/3.0_dp, pi]
+  GAMMAS = [1.1_dp, 0.2_dp, pi/7.0_dp, 0.5_dp]
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') '# L  M1  M2  alpha  beta  gamma  absdiff'
+  DO IT = 1, 4
+    ALPHA = ALPHAS(IT); BETA = BETAS(IT); GAMMA = GAMMAS(IT)
+    DO L = 0, LMAX
+      DO M1 = -L, L
+        DO M2 = -L, L
+          ACC = DCMPLX(0.d0, 0.d0)
+          DO MP = -L, L
+            ACC = ACC + CONJG(WIGNER_D(L,MP,M1,ALPHA,BETA,GAMMA)) * &
+                        WIGNER_D(L,MP,M2,ALPHA,BETA,GAMMA)
+          END DO
+          IF (M1 .EQ. M2) THEN
+            EXPECTED = 1
+          ELSE
+            EXPECTED = 0
+          END IF
+          DIFF = ABS(ACC - EXPECTED)
+          WRITE(OUTUNIT, *) L, M1, M2, ALPHA, BETA, GAMMA, DIFF
+          IF (DIFF > 1.0E-12_dp) STATUS = 1
+        END DO
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_UNITARITY
+
+
+!> Verifies \( D^\ell \) satisfies the rotation-group composition law,
+!> \( D^\ell(\text{combined})_{m'm}=\sum_k D^\ell(\text{first})_{m'k}\,
+!> D^\ell(\text{second})_{km} \), for two special cases chosen so the
+!> "combined" angle is known in closed form without needing a general
+!> Euler-angle composition formula as a test dependency: pure-\(\alpha\)
+!> rotations (diagonal; angles add directly) and pure-\(\beta\) rotations
+!> (small-d; angles add directly, \( R_y(\beta_1)R_y(\beta_2)=
+!> R_y(\beta_1+\beta_2) \)).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L MP
+!>   M absdiff_alpha_composition absdiff_beta_composition`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some difference
+!>   \( >10^{-11} \)).
+  SUBROUTINE WIGNER_D_COMPOSITION(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  REAL(KIND=dp), PARAMETER :: ALPHA1 = 0.4_dp, ALPHA2 = 0.7_dp
+  REAL(KIND=dp), PARAMETER :: BETA1 = 0.5_dp, BETA2 = 0.9_dp
+  INTEGER(KIND=i4) :: L, MP, M, K
+  COMPLEX(KIND=dp) :: ACC_A, DIRECT_A
+  REAL(KIND=dp) :: ACC_B, DIRECT_B, DIFF_A, DIFF_B
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') &
+      '# L  MP  M  absdiff_alpha_composition  absdiff_beta_composition'
+  DO L = 0, LMAX
+    DO MP = -L, L
+      DO M = -L, L
+        ACC_A = DCMPLX(0.d0, 0.d0)
+        ACC_B = 0.0_dp
+        DO K = -L, L
+          ACC_A = ACC_A + WIGNER_D(L,MP,K,ALPHA1,0.0_dp,0.0_dp) * &
+                          WIGNER_D(L,K,M,ALPHA2,0.0_dp,0.0_dp)
+          ACC_B = ACC_B + WIGNER_D_SMALL(L,MP,K,BETA1) * &
+                          WIGNER_D_SMALL(L,K,M,BETA2)
+        END DO
+        DIRECT_A = WIGNER_D(L,MP,M,ALPHA1+ALPHA2,0.0_dp,0.0_dp)
+        DIRECT_B = WIGNER_D_SMALL(L,MP,M,BETA1+BETA2)
+        DIFF_A = ABS(ACC_A - DIRECT_A)
+        DIFF_B = ABS(ACC_B - DIRECT_B)
+        WRITE(OUTUNIT, *) L, MP, M, DIFF_A, DIFF_B
+        IF (DIFF_A > 1.0E-11_dp .OR. DIFF_B > 1.0E-11_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_COMPOSITION
+
+
+!> Verifies that rotating a full SSH coefficient array by
+!> \( (\alpha,\beta,\gamma) \) and then by the inverse Euler triple
+!> \( (-\gamma,-\beta,-\alpha) \) exactly recovers the input, for three
+!> representative angle triples (a generic case, a near-\(\beta=0\)
+!> case, and an exact \( \beta=\pi \) case). Direct structural analogue
+!> of [[VSH_POL_INVERSION]], extended to a full forward/backward
+!> round-trip through [[ROTATE_SSH_ALL]] rather than a single
+!> fixed-angle relation.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns:
+!>   `alpha beta gamma L M absdiff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-12`).
+  SUBROUTINE ROTATE_SSH_INVERSION(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, M, IT, NYLM, IDX
+  REAL(KIND=dp), DIMENSION(3) :: ALPHAS, BETAS, GAMMAS
+  REAL(KIND=dp) :: ALPHA, BETA, GAMMA, DIFF
+  COMPLEX(KIND=dp), ALLOCATABLE :: ALM_IN(:), ALM_MID(:), ALM_OUT(:)
+  ALPHAS = [pi/5.0_dp, 0.1_dp, 0.0_dp]
+  BETAS  = [pi/3.0_dp, 0.05_dp, pi]
+  GAMMAS = [pi/7.0_dp, -1.3_dp, 0.3_dp]
+  NYLM = (LMAX+1)**2
+  ALLOCATE(ALM_IN(NYLM), ALM_MID(NYLM), ALM_OUT(NYLM))
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') '# alpha  beta  gamma  L  M  absdiff'
+  DO IT = 1, 3
+    ALPHA = ALPHAS(IT); BETA = BETAS(IT); GAMMA = GAMMAS(IT)
+    DO L = 0, LMAX
+      DO M = -L, L
+        ALM_IN(YLM_INDEX(L,M)) = &
+            DCMPLX(0.1d0*L+0.05d0*M, 0.2d0*L-0.03d0*M)
+      END DO
+    END DO
+    CALL ROTATE_SSH_ALL(ALM_MID, ALM_IN, LMAX, ALPHA, BETA, GAMMA)
+    CALL ROTATE_SSH_ALL(ALM_OUT, ALM_MID, LMAX, -GAMMA, -BETA, -ALPHA)
+    DO L = 0, LMAX
+      DO M = -L, L
+        IDX = YLM_INDEX(L,M)
+        DIFF = ABS(ALM_OUT(IDX) - ALM_IN(IDX))
+        WRITE(OUTUNIT, *) ALPHA, BETA, GAMMA, L, M, DIFF
+        IF (DIFF > 1.0E-12_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  DEALLOCATE(ALM_IN, ALM_MID, ALM_OUT)
+  END SUBROUTINE ROTATE_SSH_INVERSION
+
+
+!> Same forward/backward round-trip as [[ROTATE_SSH_INVERSION]], applied
+!> to [[ROTATE_PVSH_ALL]] with all three polar-basis families
+!> ([[PVSH_RAD]]/[[PVSH_POL]]/[[PVSH_TOR]]) seeded simultaneously with
+!> distinct coefficient formulas -- catches any accidental cross-family
+!> mixing that a single-family test could miss, in addition to the basic
+!> inversion identity.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns:
+!>   `alpha beta gamma L M absdiff_rad absdiff_pol absdiff_tor`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-12`).
+  SUBROUTINE ROTATE_PVSH_INVERSION(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, M, IT, NYLM, IDX
+  REAL(KIND=dp), DIMENSION(3) :: ALPHAS, BETAS, GAMMAS
+  REAL(KIND=dp) :: ALPHA, BETA, GAMMA
+  REAL(KIND=dp) :: DIFF_RAD, DIFF_POL, DIFF_TOR
+  COMPLEX(KIND=dp), ALLOCATABLE :: RAD_IN(:), POL_IN(:), TOR_IN(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: RAD_MID(:), POL_MID(:), TOR_MID(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: RAD_OUT(:), POL_OUT(:), TOR_OUT(:)
+  ALPHAS = [pi/5.0_dp, 0.1_dp, 0.0_dp]
+  BETAS  = [pi/3.0_dp, 0.05_dp, pi]
+  GAMMAS = [pi/7.0_dp, -1.3_dp, 0.3_dp]
+  NYLM = (LMAX+1)**2
+  ALLOCATE(RAD_IN(NYLM), POL_IN(NYLM), TOR_IN(NYLM))
+  ALLOCATE(RAD_MID(NYLM), POL_MID(NYLM), TOR_MID(NYLM))
+  ALLOCATE(RAD_OUT(NYLM), POL_OUT(NYLM), TOR_OUT(NYLM))
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') &
+      '# alpha  beta  gamma  L  M  absdiff_rad  absdiff_pol  absdiff_tor'
+  DO IT = 1, 3
+    ALPHA = ALPHAS(IT); BETA = BETAS(IT); GAMMA = GAMMAS(IT)
+    DO L = 0, LMAX
+      DO M = -L, L
+        IDX = YLM_INDEX(L,M)
+        RAD_IN(IDX) = DCMPLX(0.1d0*L+0.05d0*M,  0.2d0*L-0.03d0*M)
+        POL_IN(IDX) = DCMPLX(0.07d0*L-0.02d0*M, 0.15d0*L+0.04d0*M)
+        TOR_IN(IDX) = DCMPLX(0.12d0*L+0.06d0*M,-0.09d0*L+0.01d0*M)
+      END DO
+    END DO
+    CALL ROTATE_PVSH_ALL(RAD_MID, POL_MID, TOR_MID, &
+                          RAD_IN, POL_IN, TOR_IN, LMAX, ALPHA, BETA, GAMMA)
+    CALL ROTATE_PVSH_ALL(RAD_OUT, POL_OUT, TOR_OUT, &
+                          RAD_MID, POL_MID, TOR_MID, &
+                          LMAX, -GAMMA, -BETA, -ALPHA)
+    DO L = 0, LMAX
+      DO M = -L, L
+        IDX = YLM_INDEX(L,M)
+        DIFF_RAD = ABS(RAD_OUT(IDX) - RAD_IN(IDX))
+        DIFF_POL = ABS(POL_OUT(IDX) - POL_IN(IDX))
+        DIFF_TOR = ABS(TOR_OUT(IDX) - TOR_IN(IDX))
+        WRITE(OUTUNIT, *) ALPHA, BETA, GAMMA, L, M, &
+            DIFF_RAD, DIFF_POL, DIFF_TOR
+        IF (DIFF_RAD > 1.0E-12_dp .OR. DIFF_POL > 1.0E-12_dp .OR. &
+            DIFF_TOR > 1.0E-12_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  DEALLOCATE(RAD_IN, POL_IN, TOR_IN, RAD_MID, POL_MID, TOR_MID)
+  DEALLOCATE(RAD_OUT, POL_OUT, TOR_OUT)
+  END SUBROUTINE ROTATE_PVSH_INVERSION
+
+
+!> Same forward/backward round-trip as [[ROTATE_SSH_INVERSION]], applied
+!> to [[ROTATE_VSH_STD_ALL]] with all three standard-basis families
+!> ([[VSH_TOR]]/[[VSH_POL_UP]]/[[VSH_POL_DN]]) seeded simultaneously with
+!> distinct coefficient formulas.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param OUTUNIT Fortran unit number to write results to (columns:
+!>   `alpha beta gamma L M absdiff_tor absdiff_up absdiff_dn`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-12`).
+  SUBROUTINE ROTATE_VSH_STD_INVERSION(LMAX, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  INTEGER(KIND=i4) :: L, M, IT, NYLM, IDX
+  REAL(KIND=dp), DIMENSION(3) :: ALPHAS, BETAS, GAMMAS
+  REAL(KIND=dp) :: ALPHA, BETA, GAMMA
+  REAL(KIND=dp) :: DIFF_TOR, DIFF_UP, DIFF_DN
+  COMPLEX(KIND=dp), ALLOCATABLE :: TOR_IN(:), UP_IN(:), DN_IN(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: TOR_MID(:), UP_MID(:), DN_MID(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: TOR_OUT(:), UP_OUT(:), DN_OUT(:)
+  ALPHAS = [pi/5.0_dp, 0.1_dp, 0.0_dp]
+  BETAS  = [pi/3.0_dp, 0.05_dp, pi]
+  GAMMAS = [pi/7.0_dp, -1.3_dp, 0.3_dp]
+  NYLM = (LMAX+1)**2
+  ALLOCATE(TOR_IN(NYLM), UP_IN(NYLM), DN_IN(NYLM))
+  ALLOCATE(TOR_MID(NYLM), UP_MID(NYLM), DN_MID(NYLM))
+  ALLOCATE(TOR_OUT(NYLM), UP_OUT(NYLM), DN_OUT(NYLM))
+  STATUS = 0
+  WRITE(OUTUNIT,'(A)') &
+      '# alpha  beta  gamma  L  M  absdiff_tor  absdiff_up  absdiff_dn'
+  DO IT = 1, 3
+    ALPHA = ALPHAS(IT); BETA = BETAS(IT); GAMMA = GAMMAS(IT)
+    DO L = 0, LMAX
+      DO M = -L, L
+        IDX = YLM_INDEX(L,M)
+        TOR_IN(IDX) = DCMPLX(0.1d0*L+0.05d0*M,  0.2d0*L-0.03d0*M)
+        UP_IN(IDX)  = DCMPLX(0.07d0*L-0.02d0*M, 0.15d0*L+0.04d0*M)
+        DN_IN(IDX)  = DCMPLX(0.12d0*L+0.06d0*M,-0.09d0*L+0.01d0*M)
+      END DO
+    END DO
+    CALL ROTATE_VSH_STD_ALL(TOR_MID, UP_MID, DN_MID, &
+                             TOR_IN, UP_IN, DN_IN, LMAX, ALPHA, BETA, GAMMA)
+    CALL ROTATE_VSH_STD_ALL(TOR_OUT, UP_OUT, DN_OUT, &
+                             TOR_MID, UP_MID, DN_MID, &
+                             LMAX, -GAMMA, -BETA, -ALPHA)
+    DO L = 0, LMAX
+      DO M = -L, L
+        IDX = YLM_INDEX(L,M)
+        DIFF_TOR = ABS(TOR_OUT(IDX) - TOR_IN(IDX))
+        DIFF_UP  = ABS(UP_OUT(IDX)  - UP_IN(IDX))
+        DIFF_DN  = ABS(DN_OUT(IDX)  - DN_IN(IDX))
+        WRITE(OUTUNIT, *) ALPHA, BETA, GAMMA, L, M, &
+            DIFF_TOR, DIFF_UP, DIFF_DN
+        IF (DIFF_TOR > 1.0E-12_dp .OR. DIFF_UP > 1.0E-12_dp .OR. &
+            DIFF_DN > 1.0E-12_dp) STATUS = 1
+      END DO
+    END DO
+  END DO
+  DEALLOCATE(TOR_IN, UP_IN, DN_IN, TOR_MID, UP_MID, DN_MID)
+  DEALLOCATE(TOR_OUT, UP_OUT, DN_OUT)
+  END SUBROUTINE ROTATE_VSH_STD_INVERSION
+
+
+!> End-to-end ground-truth check for [[ROTATE_PVSH_ALL]]: seeds a
+!> [[PVSH_TOR]]-only coefficient array, rotates it through the public
+!> engine, and independently verifies the result by physically rotating
+!> the Cartesian vector field the *input* coefficients represent --
+!> \( \mathbf F'(\mathbf n)=R^{-1}\mathbf F(R\mathbf n) \) at each
+!> quadrature point (the physical-rotation convention this identity was
+!> empirically pinned to match [[WIGNER_D]]'s own sign convention; see
+!> the derivation in the accompanying rotation-infrastructure design
+!> notes) -- and re-decomposing it by direct numerical quadrature
+!> (midpoint rule in \( \cos\theta \), uniform in \( \phi \), no
+!> Wigner-D or [[ROTATE_SSH_ALL]] machinery anywhere in this path). Also
+!> confirms exactly zero leakage into the untouched
+!> [[PVSH_RAD]]/[[PVSH_POL]] families, the practical form of the
+!> "no \( L/\lambda \) mixing under rotation" claim [[ROTATE_PVSH_ALL]]
+!> is built on.
+!>
+!> @warning The `1e-3` tolerance reflects the quadrature's own \(
+!>   O(1/\texttt{NTHETA}^2) \) truncation error (same midpoint-rule
+!>   character as [[SSH_ORTHO]]), not the accuracy of the rotation
+!>   engine itself -- at `NTHETA=200,NPHI=32` the observed error is
+!>   \( \sim10^{-4} \), and the engine's own error (checked separately,
+!>   not in this file, against the same ground truth at tighter
+!>   quadrature) is \( \sim10^{-11} \).
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \). Kept small
+!>   (\( \lesssim5 \)) -- runtime scales as
+!>   \( O(\texttt{NTHETA}\cdot\texttt{NPHI}\cdot\ell_{max}^2) \).
+!> @param NTHETA Number of midpoint-rule quadrature points over
+!>   \( \cos\theta\in[-1,1] \).
+!> @param NPHI Number of uniform quadrature points over
+!>   \( \phi\in[0,2\pi) \) (trapezoid rule, spectrally accurate for the
+!>   periodic integrand here, so a modest value suffices).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   re(engine) im(engine) re(ground_truth) im(ground_truth) absdiff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-3`, or
+!>   any cross-family leakage `> 1e-12`).
+  SUBROUTINE ROTATE_PVSH_SPECTRUM_GT(LMAX, NTHETA, NPHI, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NTHETA
+  INTEGER(KIND=i4), INTENT(IN) :: NPHI
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  REAL(KIND=dp), PARAMETER :: ALPHA = 3.14159265358979324_dp/5.0_dp
+  REAL(KIND=dp), PARAMETER :: BETA  = 3.14159265358979324_dp/3.0_dp
+  REAL(KIND=dp), PARAMETER :: GAMMA = 3.14159265358979324_dp/7.0_dp
+  INTEGER(KIND=i4) :: L, M, ITH, IPH, NYLM, IDX
+  REAL(KIND=dp) :: THETA, PHI, THETA1, PHI1, U, DU, DPHI, MAXDIFF, DIFF
+  REAL(KIND=dp) :: RMAT(3,3), RMAT_T(3,3)
+  REAL(KIND=dp) :: RHAT0(3), THHAT0(3), PHHAT0(3)
+  REAL(KIND=dp) :: RHAT1(3), THHAT1(3), PHHAT1(3), FORWARD(3)
+  COMPLEX(KIND=dp) :: F0_CART(3), FPRIME_CART(3), F_TH, F_PH
+  COMPLEX(KIND=dp), ALLOCATABLE :: C_RAD_IN(:), C_POL_IN(:), C_TOR_IN(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: C_RAD_OUT(:), C_POL_OUT(:), C_TOR_OUT(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: GT_TOR(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: BASIS0(:,:), BASIS1(:,:)
+
+  NYLM = (LMAX+1)**2
+  ALLOCATE(C_RAD_IN(NYLM), C_POL_IN(NYLM), C_TOR_IN(NYLM))
+  ALLOCATE(C_RAD_OUT(NYLM), C_POL_OUT(NYLM), C_TOR_OUT(NYLM))
+  ALLOCATE(GT_TOR(NYLM), BASIS0(3,NYLM), BASIS1(3,NYLM))
+  STATUS = 0
+
+  C_RAD_IN = DCMPLX(0.d0, 0.d0)
+  C_POL_IN = DCMPLX(0.d0, 0.d0)
+  DO L = 0, LMAX
+    DO M = -L, L
+      C_TOR_IN(YLM_INDEX(L,M)) = DCMPLX(0.1d0*L+0.05d0*M, 0.2d0*L-0.03d0*M)
+    END DO
+  END DO
+
+  CALL ROTATE_PVSH_ALL(C_RAD_OUT, C_POL_OUT, C_TOR_OUT, &
+                        C_RAD_IN, C_POL_IN, C_TOR_IN, &
+                        LMAX, ALPHA, BETA, GAMMA)
+
+  RMAT = EULER_ROTATION_MATRIX(ALPHA, BETA, GAMMA)
+  RMAT_T = TRANSPOSE(RMAT)
+  GT_TOR = DCMPLX(0.d0, 0.d0)
+  DU = 2.0_dp / NTHETA
+  DPHI = 2.0_dp*pi / NPHI
+
+  DO ITH = 1, NTHETA
+    U = -1.0_dp + (ITH - 0.5_dp) * DU
+    THETA = DACOS(U)
+    DO IPH = 1, NPHI
+      PHI = (IPH - 1) * DPHI
+      CALL SPH_UNIT_VECTORS(THETA, PHI, RHAT0, THHAT0, PHHAT0)
+      FORWARD = MATMUL(RMAT, RHAT0)
+      CALL CART_TO_SPH(FORWARD, THETA1, PHI1)
+      CALL SPH_UNIT_VECTORS(THETA1, PHI1, RHAT1, THHAT1, PHHAT1)
+      CALL PVSH_TOR_ALL(BASIS1, LMAX, THETA1, PHI1)
+      F0_CART = DCMPLX(0.d0, 0.d0)
+      DO IDX = 1, NYLM
+        F0_CART = F0_CART + C_TOR_IN(IDX) * &
+            (BASIS1(2,IDX)*THHAT1 + BASIS1(3,IDX)*PHHAT1)
+      END DO
+      FPRIME_CART = ROTATE_CVEC3(RMAT_T, F0_CART)
+      F_TH = FPRIME_CART(1)*THHAT0(1) + FPRIME_CART(2)*THHAT0(2) + &
+             FPRIME_CART(3)*THHAT0(3)
+      F_PH = FPRIME_CART(1)*PHHAT0(1) + FPRIME_CART(2)*PHHAT0(2) + &
+             FPRIME_CART(3)*PHHAT0(3)
+      CALL PVSH_TOR_ALL(BASIS0, LMAX, THETA, PHI)
+      DO IDX = 1, NYLM
+        GT_TOR(IDX) = GT_TOR(IDX) + &
+            (F_TH*CONJG(BASIS0(2,IDX)) + F_PH*CONJG(BASIS0(3,IDX))) * &
+            DU * DPHI
+      END DO
+    END DO
+  END DO
+
+  MAXDIFF = 0.0_dp
+  WRITE(OUTUNIT,'(A)') &
+      '# L  M  re(engine)  im(engine)  re(ground_truth)'// &
+      '  im(ground_truth)  absdiff'
+  DO L = 0, LMAX
+    DO M = -L, L
+      IDX = YLM_INDEX(L,M)
+      DIFF = ABS(C_TOR_OUT(IDX) - GT_TOR(IDX))
+      MAXDIFF = MAX(MAXDIFF, DIFF)
+      WRITE(OUTUNIT, *) L, M, DREAL(C_TOR_OUT(IDX)), DIMAG(C_TOR_OUT(IDX)), &
+          DREAL(GT_TOR(IDX)), DIMAG(GT_TOR(IDX)), DIFF
+    END DO
+  END DO
+  IF (MAXDIFF > 1.0E-3_dp) STATUS = 1
+
+  DO IDX = 1, NYLM
+    IF (ABS(C_RAD_OUT(IDX)) > 1.0E-12_dp .OR. &
+        ABS(C_POL_OUT(IDX)) > 1.0E-12_dp) STATUS = 1
+  END DO
+
+  DEALLOCATE(C_RAD_IN, C_POL_IN, C_TOR_IN, C_RAD_OUT, C_POL_OUT, C_TOR_OUT)
+  DEALLOCATE(GT_TOR, BASIS0, BASIS1)
+  END SUBROUTINE ROTATE_PVSH_SPECTRUM_GT
+
+
+!> Companion to [[ROTATE_PVSH_SPECTRUM_GT]] for [[ROTATE_VSH_STD_ALL]]:
+!> same from-scratch ground-truth methodology, but seeds a
+!> [[VSH_POL_UP]]-only coefficient array instead of a toroidal one, so
+!> the check additionally exercises a *nonzero radial component*
+!> (the \( J=\ell+1 \) fixed linear combination of [[PVSH_RAD]] and
+!> [[PVSH_POL]]) rather than a purely tangential field. Also confirms
+!> exactly zero leakage into the untouched [[VSH_TOR]]/[[VSH_POL_DN]]
+!> families.
+!>
+!> @warning Same quadrature-truncation caveat as
+!>   [[ROTATE_PVSH_SPECTRUM_GT]]'s `@warning` applies here.
+!>
+!> @param LMAX Maximum degree tested, \( \ell_{max}\ge0 \).
+!> @param NTHETA Number of midpoint-rule quadrature points over
+!>   \( \cos\theta\in[-1,1] \).
+!> @param NPHI Number of uniform quadrature points over
+!>   \( \phi\in[0,2\pi) \).
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L M
+!>   re(engine) im(engine) re(ground_truth) im(ground_truth) absdiff`).
+!> @param STATUS Output: 0 = pass, 1 = fail (some `absdiff > 1e-3`, or
+!>   any cross-family leakage `> 1e-12`).
+  SUBROUTINE ROTATE_VSH_STD_SPECTRUM_GT(LMAX, NTHETA, NPHI, OUTUNIT, STATUS)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: LMAX
+  INTEGER(KIND=i4), INTENT(IN) :: NTHETA
+  INTEGER(KIND=i4), INTENT(IN) :: NPHI
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), INTENT(OUT) :: STATUS
+  REAL(KIND=dp), PARAMETER :: ALPHA = 3.14159265358979324_dp/5.0_dp
+  REAL(KIND=dp), PARAMETER :: BETA  = 3.14159265358979324_dp/3.0_dp
+  REAL(KIND=dp), PARAMETER :: GAMMA = 3.14159265358979324_dp/7.0_dp
+  INTEGER(KIND=i4) :: L, M, ITH, IPH, NYLM, IDX
+  REAL(KIND=dp) :: THETA, PHI, THETA1, PHI1, U, DU, DPHI, MAXDIFF, DIFF
+  REAL(KIND=dp) :: RMAT(3,3), RMAT_T(3,3)
+  REAL(KIND=dp) :: RHAT0(3), THHAT0(3), PHHAT0(3)
+  REAL(KIND=dp) :: RHAT1(3), THHAT1(3), PHHAT1(3), FORWARD(3)
+  COMPLEX(KIND=dp) :: F0_CART(3), FPRIME_CART(3), F_R, F_TH, F_PH
+  COMPLEX(KIND=dp), ALLOCATABLE :: C_TOR_IN(:), C_UP_IN(:), C_DN_IN(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: C_TOR_OUT(:), C_UP_OUT(:), C_DN_OUT(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: GT_UP(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: BASIS0(:,:), BASIS1(:,:)
+
+  NYLM = (LMAX+1)**2
+  ALLOCATE(C_TOR_IN(NYLM), C_UP_IN(NYLM), C_DN_IN(NYLM))
+  ALLOCATE(C_TOR_OUT(NYLM), C_UP_OUT(NYLM), C_DN_OUT(NYLM))
+  ALLOCATE(GT_UP(NYLM), BASIS0(3,NYLM), BASIS1(3,NYLM))
+  STATUS = 0
+
+  C_TOR_IN = DCMPLX(0.d0, 0.d0)
+  C_DN_IN  = DCMPLX(0.d0, 0.d0)
+  DO L = 0, LMAX
+    DO M = -L, L
+      C_UP_IN(YLM_INDEX(L,M)) = &
+          DCMPLX(0.07d0*L+0.04d0*M, 0.15d0*L-0.02d0*M)
+    END DO
+  END DO
+
+  CALL ROTATE_VSH_STD_ALL(C_TOR_OUT, C_UP_OUT, C_DN_OUT, &
+                           C_TOR_IN, C_UP_IN, C_DN_IN, &
+                           LMAX, ALPHA, BETA, GAMMA)
+
+  RMAT = EULER_ROTATION_MATRIX(ALPHA, BETA, GAMMA)
+  RMAT_T = TRANSPOSE(RMAT)
+  GT_UP = DCMPLX(0.d0, 0.d0)
+  DU = 2.0_dp / NTHETA
+  DPHI = 2.0_dp*pi / NPHI
+
+  DO ITH = 1, NTHETA
+    U = -1.0_dp + (ITH - 0.5_dp) * DU
+    THETA = DACOS(U)
+    DO IPH = 1, NPHI
+      PHI = (IPH - 1) * DPHI
+      CALL SPH_UNIT_VECTORS(THETA, PHI, RHAT0, THHAT0, PHHAT0)
+      FORWARD = MATMUL(RMAT, RHAT0)
+      CALL CART_TO_SPH(FORWARD, THETA1, PHI1)
+      CALL SPH_UNIT_VECTORS(THETA1, PHI1, RHAT1, THHAT1, PHHAT1)
+      CALL VSH_POL_UP_ALL(BASIS1, LMAX, THETA1, PHI1)
+      F0_CART = DCMPLX(0.d0, 0.d0)
+      DO IDX = 1, NYLM
+        F0_CART = F0_CART + C_UP_IN(IDX) * &
+            (BASIS1(1,IDX)*RHAT1 + BASIS1(2,IDX)*THHAT1 + &
+             BASIS1(3,IDX)*PHHAT1)
+      END DO
+      FPRIME_CART = ROTATE_CVEC3(RMAT_T, F0_CART)
+      F_R  = FPRIME_CART(1)*RHAT0(1)  + FPRIME_CART(2)*RHAT0(2)  + &
+             FPRIME_CART(3)*RHAT0(3)
+      F_TH = FPRIME_CART(1)*THHAT0(1) + FPRIME_CART(2)*THHAT0(2) + &
+             FPRIME_CART(3)*THHAT0(3)
+      F_PH = FPRIME_CART(1)*PHHAT0(1) + FPRIME_CART(2)*PHHAT0(2) + &
+             FPRIME_CART(3)*PHHAT0(3)
+      CALL VSH_POL_UP_ALL(BASIS0, LMAX, THETA, PHI)
+      DO IDX = 1, NYLM
+        GT_UP(IDX) = GT_UP(IDX) + &
+            (F_R*CONJG(BASIS0(1,IDX)) + F_TH*CONJG(BASIS0(2,IDX)) + &
+             F_PH*CONJG(BASIS0(3,IDX))) * DU * DPHI
+      END DO
+    END DO
+  END DO
+
+  MAXDIFF = 0.0_dp
+  WRITE(OUTUNIT,'(A)') &
+      '# L  M  re(engine)  im(engine)  re(ground_truth)'// &
+      '  im(ground_truth)  absdiff'
+  DO L = 0, LMAX
+    DO M = -L, L
+      IDX = YLM_INDEX(L,M)
+      DIFF = ABS(C_UP_OUT(IDX) - GT_UP(IDX))
+      MAXDIFF = MAX(MAXDIFF, DIFF)
+      WRITE(OUTUNIT, *) L, M, DREAL(C_UP_OUT(IDX)), DIMAG(C_UP_OUT(IDX)), &
+          DREAL(GT_UP(IDX)), DIMAG(GT_UP(IDX)), DIFF
+    END DO
+  END DO
+  IF (MAXDIFF > 1.0E-3_dp) STATUS = 1
+
+  DO IDX = 1, NYLM
+    IF (ABS(C_TOR_OUT(IDX)) > 1.0E-12_dp .OR. &
+        ABS(C_DN_OUT(IDX)) > 1.0E-12_dp) STATUS = 1
+  END DO
+
+  DEALLOCATE(C_TOR_IN, C_UP_IN, C_DN_IN, C_TOR_OUT, C_UP_OUT, C_DN_OUT)
+  DEALLOCATE(GT_UP, BASIS0, BASIS1)
+  END SUBROUTINE ROTATE_VSH_STD_SPECTRUM_GT
+
+
+!> Writes a representative table of \( D^\ell_{m'm}(\alpha,\beta,\gamma) \)
+!> values (\( 0\le\ell\le4 \), every \( m',m \), at three angle triples)
+!> to `OUTUNIT` for cross-checking against `py/sympy_reference.py` --
+!> `sympy.physics.quantum.spin.Rotation.D`, a genuinely independent
+!> library/algorithm, not just a higher-precision re-evaluation of the
+!> same closed form. Data-generation only, no pass/fail `STATUS` -- the
+!> comparison itself is manual/investigative (run
+!> `py/compute_validation.py` after the suite), matching
+!> `py/mpmath_reference.py`'s own self-check convention rather than a
+!> ctest gate.
+!>
+!> @param OUTUNIT Fortran unit number to write results to (columns: `L
+!>   MP M alpha beta gamma re(D) im(D)`).
+  SUBROUTINE WIGNER_D_SPOTCHECK(OUTUNIT)
+  IMPLICIT NONE
+  INTEGER(KIND=i4), INTENT(IN) :: OUTUNIT
+  INTEGER(KIND=i4), PARAMETER :: LMAX = 4
+  INTEGER(KIND=i4) :: L, MP, M, IT
+  REAL(KIND=dp) :: ALPHA, BETA, GAMMA
+  REAL(KIND=dp), DIMENSION(3) :: ALPHAS, BETAS, GAMMAS
+  COMPLEX(KIND=dp) :: D
+  ALPHAS = [0.4_dp, pi/5.0_dp, 1.9_dp]
+  BETAS  = [0.9_dp, pi/3.0_dp, 2.6_dp]
+  GAMMAS = [1.3_dp, pi/7.0_dp, 0.2_dp]
+  WRITE(OUTUNIT,'(A)') '# L  MP  M  alpha  beta  gamma  re(D)  im(D)'
+  DO IT = 1, 3
+    ALPHA = ALPHAS(IT); BETA = BETAS(IT); GAMMA = GAMMAS(IT)
+    DO L = 0, LMAX
+      DO MP = -L, L
+        DO M = -L, L
+          D = WIGNER_D(L, MP, M, ALPHA, BETA, GAMMA)
+          WRITE(OUTUNIT, *) L, MP, M, ALPHA, BETA, GAMMA, &
+              DREAL(D), DIMAG(D)
+        END DO
+      END DO
+    END DO
+  END DO
+  END SUBROUTINE WIGNER_D_SPOTCHECK
 
 
 END MODULE TESTS

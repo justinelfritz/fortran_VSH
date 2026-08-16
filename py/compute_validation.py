@@ -192,6 +192,33 @@ def vsh_inversion_stats():
     return max(pol), max(rad)
 
 
+def wigner_d_spotcheck_stats():
+    """
+    Max |Fortran WIGNER_D - sympy Rotation.D| over wigner_d_spotcheck.dat,
+    an independent cross-check against a genuinely different
+    library/algorithm (see py/sympy_reference.py's module docstring for
+    why this is kept separate from py/mpmath_reference.py's role).
+    Format: L  MP  M  alpha  beta  gamma  re(D)  im(D)
+
+    Manual/investigative, like py/mpmath_reference.py's own self-check --
+    not wired into main()'s validation_values.tex output, since this
+    rotation infrastructure isn't part of the submitted manuscript.
+    Requires sympy (see py/requirements.txt); import is local to this
+    function so the rest of this module has no hard sympy dependency.
+    """
+    from sympy_reference import wigner_d_ref
+
+    rows = load_plain('wigner_d_spotcheck.dat')
+    max_err = 0.0
+    for row in rows:
+        l, mp, m = int(row[0]), int(row[1]), int(row[2])
+        alpha, beta, gamma = float(row[3]), float(row[4]), float(row[5])
+        fortran_val = complex(float(row[6]), float(row[7]))
+        sympy_val = wigner_d_ref(l, mp, m, alpha, beta, gamma)
+        max_err = max(max_err, abs(fortran_val - sympy_val))
+    return max_err
+
+
 # ── LaTeX formatting ──────────────────────────────────────────────────────────
 
 def latex_sci(val):
@@ -260,6 +287,15 @@ def main():
     width = max(len(k) for k in stats)
     for k, v in stats.items():
         print(f'  {k:{width}s} : {v:.3e}')
+
+    # Wigner-D vs. sympy cross-check -- informational only (see
+    # wigner_d_spotcheck_stats' docstring for why this stays out of
+    # validation_values.tex/`stats` above rather than joining them).
+    try:
+        wigd_err = wigner_d_spotcheck_stats()
+        print(f'\nWigner-D vs. sympy cross-check: max abs err = {wigd_err:.3e}')
+    except ImportError:
+        print('\n(sympy not installed -- skipping Wigner-D vs. sympy cross-check)')
 
     # Write validation_values.tex
     outpath = os.path.join(VDIR, 'validation_values.tex')

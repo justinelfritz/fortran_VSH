@@ -1,10 +1,12 @@
-# Numerical stability of FORTVSH's Legendre recurrences
+# Numerical stability of FORTVSH's Legendre recurrences and Wigner-D rotation matrices
 
-**Status: two independent investigations, both complete.** This document is written
+**Status: three independent investigations, all complete.** This document is written
 incrementally as each experiment runs, so the raw data behind every claim here
 doesn't need to be regenerated to recall why we believe it. Part 1 covers the
 normalized (Holmes-Featherstone) recurrence; Part 2 covers the unnormalized (Bonnet)
-recurrence and everything single-mode built on it.
+recurrence and everything single-mode built on it; Part 3 covers `WIGNER_D_SMALL`,
+the closed-form Wigner small-d rotation matrix underlying the coefficient-space
+rotation infrastructure (Option C of the rotation/magnetic-axis-coupling design).
 
 ---
 
@@ -257,3 +259,214 @@ per-degree table if finer-grained guidance is needed for a specific `theta`.
 
 This is a stricter ceiling than Part 1's `l<=2000` for the normalized routines --
 consistent with why `ASSOC_LEGENDRE_NORM_ALL` exists at all.
+
+---
+
+# Part 3: `WIGNER_D_SMALL` (Wigner small-d rotation matrix)
+
+## Background
+
+`src/vsh.f90`'s `WIGNER_D_SMALL_DP` implements Wigner's explicit finite-sum formula
+for the small-d rotation matrix element `d^l_{m'm}(beta)`, the real-valued
+polar-angle factor of the full complex Wigner-D matrix `WIGNER_D` that the new
+coefficient-space rotation infrastructure (`ROTATE_SSH_ALL`, `ROTATE_PVSH_ALL`,
+`ROTATE_VSH_STD_ALL` -- Option C of the rotation-axis/magnetic-axis coupling design)
+is built on. Structurally the same alternating-sign multi-factorial finite sum as
+`CGCOEFF`'s Racah sum, evaluated in log-factorial form via `LOG_FACT` for the same
+reason `CGCOEFF` is: to avoid any single factorial overflowing directly.
+
+## Discovery
+
+Built to the same "test and validate" standard as Parts 1-2: an opt-in
+`VSH_BUILD_ROTATION_STABILITY` stability scan (below) was written proactively,
+before any problem was suspected, purely because a brand-new closed-form summation
+formula deserved the same scrutiny this document already gave the Legendre
+recurrences. It immediately found a real bug.
+
+`WIGNER_D_SMALL_DP` computed `PREFACTOR = EXP(prefactor_exponent)` as a standalone
+quantity, then multiplied it by `EXP(-term_exponent)` per `k`-term. For the
+worst-case `(m',m)=(0,0)` pair, `prefactor_exponent = 2*LOG_FACT(l)`, which exceeds
+709.78 (the double-precision `EXP` overflow threshold) around `l~100` --
+**even though the true combined ratio `EXP(prefactor_exponent - term_exponent)`
+stays small there**, since the two exponents are individually large but nearly
+cancel for most `k`. Computing them as two separate `EXP` calls threw away that
+cancellation and overflowed prematurely.
+
+**Fix**: combine both exponents into one `EXP(prefactor_exponent - term_exponent)`
+call per `k`-term, keeping `PREFACTOR` itself as an unexponentiated log-space value
+throughout. Verified directly (Python, mirroring the exact arithmetic sequence):
+this pushes the hard-overflow onset for the `(0,0)` pair from `l~100` to `l~1040` --
+a real, ~10x improvement, at zero cost and with no effect on any value this
+codebase's own tests exercise (`ctest` runs at `l<=6`).
+
+This did **not** fix the deeper problem, discovered investigating the same bug:
+**catastrophic cancellation** in the `k`-sum itself. At `l=60`, `beta=60 deg`,
+`(m',m)=(0,0)`: individual `k`-terms reach magnitude `~2e14` while the true sum is
+`~0.106` (confirmed against `mpmath` at 50 decimal digits) -- a loss of ~15 decimal
+digits, consuming essentially all of double precision's ~15-16 significant digits.
+This is not fixable by exponent-combining (that only prevents any *single* term
+from over/underflowing; it cannot prevent nearly-equal-and-opposite large terms
+from losing precision when summed) -- it is inherent to evaluating this direct-sum
+formula in double precision, and is the reason libraries like SHTOOLS/pyshtools use
+a recursive algorithm in `l` for fixed `(m',m)` instead. Not implemented here (see
+Status below).
+
+## Experiment 1: coarse `|d|<=1` proxy scan across `(l, beta)`
+
+`src/rotation_stability_main.f90` (new, opt-in `VSH_BUILD_ROTATION_STABILITY` CMake
+target, executable `vsh_rotation_stability`, not part of `ctest` -- separate from
+`VSH_BUILD_STABILITY`, since `WIGNER_D_SMALL` is a different closed-form family
+entirely from the Legendre recurrences Parts 1-2 cover). Every `d^l_{m'm}(beta)` is
+a rotation-matrix element, so `|d^l_{m'm}(beta)| <= 1` always, in exact arithmetic --
+an exact, parameter-free correctness bound, unlike Part 1's empirically-tuned
+threshold. For `beta = 0 deg, 1 deg, ..., 180 deg`, checks five representative
+`(m',m)` pairs (the two diagonal extremes `(l,l)`/`(-l,-l)`, the two off-diagonal
+extremes `(l,0)`/`(0,l)`, and the center `(0,0)`) at every `l` from `20` to `2000`
+in steps of `20`. Output: `./rotation_stability/rotation_stability_map.dat`
+(18,100 rows). Ran in ~1.5s (post-fix).
+
+### Results
+
+Post-fix, the smallest broken `l` is `60`, first appearing over a contiguous band
+`beta=57-123 deg` centered on `beta=90 deg` (consistent with Experiment 2's finer
+result below, where the worst case is also `beta` near 90 deg); genuine `Infinity`
+values (the residual hard-overflow limit after the exponent-combining fix) don't
+appear until `l=1040`, confirming the fix's ~10x improvement directly in the full
+`(l, beta)` scan, not just the single hand-picked case checked during the fix
+itself.
+
+**Important caveat on reading this scan**: the `|d|<=1` check is a real bug
+detector with no false positives (if it flags broken, the value is definitely
+wrong), but it is not a correctness detector -- catastrophic cancellation does not
+reliably push a wrong answer above 1, so a "safe-looking" `l` past the initial
+broken band does **not** mean accuracy has returned. (Concretely: at `beta=90 deg`,
+`l=600-1000`, the peak magnitude sits around `0.14-0.15` -- comfortably under 1 --
+even though Experiment 2 shows real error has been present since `l~34` at that
+`beta`.) Only the *first* broken boundary, and the region below it, should be
+trusted from this scan alone; the picture at higher `l` is investigative, not a
+safety signal.
+
+## Experiment 2: fine-grained error-vs-l scan against arbitrary-precision ground truth
+
+Motivated by the practical question this investigation exists to answer: for the
+oblique-rotator use case (small misalignment `beta` between the rotation axis and
+magnetic axis, high `l` MHD content), how small does `beta` actually need to be for
+a given `lmax` to be trustworthy? Experiment 1's coarse proxy can't answer this --
+it only detects *obvious* breakage, not the earlier point where cancellation has
+already corrupted the result by some smaller (but still physically significant)
+amount.
+
+New independent reference `py/mpmath_reference.py:wigner_d_small_ref` (arbitrary
+precision, 50 decimal digits) -- evaluates the *same* closed-form formula but via
+direct `mp.factorial` calls rather than `WIGNER_D_SMALL_DP`'s log-factorial/
+incremental-term-update technique (a technique that exists purely to dodge
+double-precision overflow, which `mpmath`'s unbounded exponent range doesn't need),
+so this is a genuinely different code path, not a higher-precision replay of the
+same arithmetic. Self-checked against three closed forms (`d^0_00=1`,
+`d^1_00(beta)=cos(beta)`, `d^1_10(beta)=sin(beta)/sqrt(2)` -- the last using the
+`+` sign convention this codebase settled on during development, confirmed against
+`sympy` independently at the time) before being trusted.
+
+`py/plot_wigner_d_error.py`: for `beta = 1, 2, 3, 5, 7, 10, 12, 15, 20, 25, 30 deg`
+and `l = 1..150`, compares a direct Python port of `WIGNER_D_SMALL_DP`'s current
+(post-fix) double-precision algorithm against `wigner_d_small_ref`, for the
+worst-case `(m',m)=(0,0)` pair (confirmed worst case: off-diagonal pairs collapse to
+a single `k`-term with no cancellation at all -- see `WIGNER_D_SMALL_DP`'s own
+`@warning` in `src/vsh.f90`). Writes both the raw data
+(`rotation_stability/wigner_d_error_vs_l.dat`) and the figure below.
+
+### Results
+
+| beta (deg) | error at l=100 | first l where error > 1e-6 | first l where error > 1e-3 |
+|---|---|---|---|
+| 1 | 3.1e-14 | -- (not reached by l=150) | -- |
+| 2 | 1.4e-13 | -- | -- |
+| 3 | 4.8e-13 | -- | -- |
+| 5 | 1.3e-11 | -- | -- |
+| 7 | 2.9e-10 | 159 | -- |
+| 10 | 2.4e-08 | 121 | 163 |
+| 12 | 3.7e-07 | 106 | 141 |
+| 15 | 1.3e-05 | 91 | 117 |
+| 20 | 1.3e-02 | 74 | 95 |
+| 25 | 1.2e+00 | 60 | 79 |
+| 30 | 5.8e+02 | 54 | 69 |
+
+The growth is smooth and monotonic in both `l` and `beta` (visible directly in the
+figure below) -- no sudden cliff the way Part 2's unnormalized-Legendre cancellation
+was; error simply compounds roughly geometrically with `l`, faster for larger
+`beta`. There is a fairly sharp *practical* transition, though: between `beta=15 deg`
+(error `1.3e-5` at `l=100`, likely fine for most physics) and `beta=25 deg` (error
+`O(1)` at `l=100`, meaningless), the safe/unsafe verdict flips over only ~10 degrees.
+
+## Practical safe-range guidance
+
+- **`WIGNER_D_SMALL`, `WIGNER_D`, and every rotation routine built on them
+  (`ROTATE_SSH_ALL`, `ROTATE_SSH_MODE`, `ROTATE_PVSH_ALL`, `ROTATE_VSH_STD_ALL`) are
+  safe at `l<=100` for obliquity `beta <~ 12-15 deg`**, to `~1e-7 - 1e-5` absolute
+  accuracy in the worst-case `(m',m)` near 0. This is the concrete, quantitative
+  answer behind the qualitative "small beta -> stable to l~100" intuition that
+  motivated this investigation.
+- **Past `beta~20 deg`, `l=100` already carries ~1% error; past `beta~25 deg` it is
+  meaningless.** There is no gentle degradation to lean on above `beta~15 deg` --
+  budget accordingly if a use case can't guarantee a small obliquity.
+- **The hard-overflow ceiling (post-fix) is `l~1040`** for the worst-case pair at
+  any `beta` away from the poles -- effectively irrelevant at the `l<=100` operating
+  point identified above; the binding constraint is the much-earlier
+  cancellation-driven accuracy loss, not overflow.
+- This is a limitation of the **worst-case `(m',m)` near 0 specifically** -- other
+  `(m',m)` pairs (confirmed in Experiment 1's broader, if coarser, `(l,beta)` sweep)
+  stay accurate to much larger `l`/`beta`. If a given application's rotated field is
+  known to avoid low-`|m|` power concentrated near the poles, these bounds are
+  conservative for it.
+- Safe and exact (to `ctest`-verified `~1e-11` precision) for every `l` this
+  codebase's own test suite and worked examples currently use (`l<=10`) --
+  none of this affects existing functionality, only informs how far the *new*
+  rotation infrastructure can be pushed.
+- A fully robust fix (safe to arbitrarily large `l` at any `beta`) would need a
+  different algorithm -- a three-term recurrence in `l` for fixed `(m',m)`, the
+  standard approach in packages like SHTOOLS/pyshtools -- rather than this
+  direct-sum formula. Not implemented; see Status below.
+
+## Visualization
+
+`py/plot_rotation_stability.py` reads `rotation_stability/rotation_stability_map.dat`
+and produces `rotation_stability/rotation_stability_map.png`: an `(l, beta)`
+heatmap of peak `|d|` (Experiment 1), log-scaled and clipped at 20. Shows the
+initial safe wedge narrowing from `beta` near the poles toward `beta=90 deg`, the
+first broken band, and (with the important caveat above) the higher-`l` regions
+where the coarse proxy stops being informative.
+
+`py/plot_wigner_d_error.py` reads no external data (computes and writes its own,
+`rotation_stability/wigner_d_error_vs_l.dat`) and produces
+`rotation_stability/wigner_d_error_vs_l.png`: `|error|` vs. `l` for each `beta` in
+Experiment 2's table, one line per `beta` on a single-hue sequential color ramp
+(darker/cooler = smaller `beta`), with `1e-6`/`1e-3` reference lines and the
+`l=100` operating point marked directly. This is the figure to consult for the
+`beta` vs. `l` accuracy trade-off directly.
+
+Unlike Parts 1-2's figures (which feed the already-submitted GMD manuscript via
+`py/plotstyle.py`'s `savefig_pair`, writing into `tex/Copernicus-EGU/figures/`),
+both Part 3 figures deliberately write into `./rotation_stability/` instead --
+this rotation infrastructure is for the not-yet-drafted MHD follow-up paper, so
+keeping its figures out of the submitted manuscript's asset directory is
+intentional, not an oversight.
+
+## Status: investigation complete for this pass
+
+Open items for a future pass, not blocking the headline `l<=100`/`beta<~15 deg`
+guidance:
+- Only the worst-case `(m',m)=(0,0)` pair was finely scanned against arbitrary-
+  precision ground truth (Experiment 2). Other near-zero pairs (e.g. `(1,0)`,
+  `(1,1)`) are expected to behave similarly by the same cancellation mechanism, but
+  weren't individually verified at that precision -- Experiment 1's coarser sweep
+  is the only evidence for them directly.
+- The recursive-in-`l` algorithm that would remove this limitation entirely (rather
+  than characterize and warn around it) has not been implemented -- a genuine
+  follow-up task if a future use case needs `beta` beyond `~20 deg` at `l` beyond
+  `~100`, not a small addition to this investigation.
+- `@warning`s on `WIGNER_D_SMALL_DP` and every routine built on it (`WIGNER_D_DP`,
+  `WIGNER_D_SMALL_ALL_DP`, `WIGNER_D_ALL_DP`, `WIGNER_D_SMALL_BLOCK_DP`,
+  `ROTATE_SSH_ALL_DP`, `ROTATE_SSH_MODE_DP`, `ROTATE_PVSH_ALL_DP`,
+  `ROTATE_VSH_STD_ALL_DP`) already state the `l~30-50` qualitative bound directly in
+  `src/vsh.f90` -- **done**; this document is the detailed backing investigation
+  those warnings point to.

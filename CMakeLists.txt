@@ -19,6 +19,7 @@ option(VSH_BUILD_BENCHMARK "Build the vsh_benchmark executable (batch vs. naive-
 option(VSH_BUILD_EXAMPLES  "Build the poloidal-dipole worked-example executables"    OFF)
 option(VSH_BUILD_CONVERGENCE "Build the vsh_convergence executable (batch-consistency accuracy sweep up to Lmax=300)" OFF)
 option(VSH_BUILD_STABILITY "Build the vsh_stability executable (ASSOC_LEGENDRE_NORM_ALL stability scan over l,m,theta)" OFF)
+option(VSH_BUILD_ROTATION_STABILITY "Build the vsh_rotation_stability executable (Wigner-D small-d stability scan over l,beta)" OFF)
 
 # ── Generate version Fortran module ──────────────────────────────────────────
 configure_file(
@@ -160,6 +161,22 @@ if(VSH_BUILD_STABILITY)
   target_link_libraries(vsh_unnorm_stability PRIVATE vsh)
   set_target_properties(vsh_unnorm_stability PROPERTIES
     Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj_unnorm_stability"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
+
+# ── Rotation (Wigner-D) stability-scan executable (opt-in; not part of
+# ctest) ────────────────────────────────────────────────────────────────────
+# Separate from VSH_BUILD_STABILITY: that option's two executables are about
+# the Legendre recurrences; WIGNER_D_SMALL is a different closed-form family
+# (Wigner's explicit finite sum, same technique as CGCOEFF). See
+# src/rotation_stability_main.f90 for the exact |d|<=1 bound this scan uses.
+if(VSH_BUILD_ROTATION_STABILITY)
+  file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/rotation_stability")
+  add_executable(vsh_rotation_stability src/rotation_stability_main.f90)
+  target_link_libraries(vsh_rotation_stability PRIVATE vsh)
+  set_target_properties(vsh_rotation_stability PROPERTIES
+    Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/obj_rotation_stability"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()
