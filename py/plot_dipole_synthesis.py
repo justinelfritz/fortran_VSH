@@ -6,7 +6,7 @@ with l=0,2,3 (purity check).
 
 Reads examples/dipole_synthesis/*.dat (produced by the dipole_synthesis
 executable; see the plan's "Real-world usage demonstration" section) and
-writes dipole_synthesis_accuracy.{pdf,png} to tex/Copernicus-EGU/figures/.
+writes dipole_synthesis_accuracy.{pdf,png} to figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

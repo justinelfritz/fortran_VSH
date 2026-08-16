@@ -7,7 +7,7 @@ surface (screening current).
 
 Reads examples/dipole_flux_expulsion/field_profile.dat (produced by the
 dipole_flux_expulsion executable) and writes
-dipole_flux_expulsion_match.{pdf,png} to tex/Copernicus-EGU/figures/.
+dipole_flux_expulsion_match.{pdf,png} to figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

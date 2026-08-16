@@ -6,7 +6,7 @@ and Btheta discontinuous (bound surface current) across the boundary.
 
 Reads examples/dipole_uniform_sphere/field_profile.dat (produced by the
 dipole_uniform_sphere executable) and writes
-dipole_uniform_sphere_match.{pdf,png} to tex/Copernicus-EGU/figures/.
+dipole_uniform_sphere_match.{pdf,png} to figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

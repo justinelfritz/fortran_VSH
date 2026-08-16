@@ -4,7 +4,7 @@ Plot FORTVSH batch-vs-naive-loop timing benchmarks.
 
 Reads benchmark/bench_*.dat (produced by vsh_benchmark; see the
 "Benchmarking" section of README.md) and writes two figures to
-tex/Copernicus-EGU/figures/:
+figures/:
 
   benchmark_scaling.pdf  -- wall time per evaluation vs Lmax, batch vs
                             naive per-mode loop, one panel per routine

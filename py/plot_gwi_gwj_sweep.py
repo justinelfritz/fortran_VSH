@@ -7,7 +7,7 @@ combinations and aggregated by J1+J2.
 
 Reads examples/gwi_gwj_sweep/*.dat (produced by the gwi_gwj_sweep
 executable) and writes gwi_gwj_sweep_accuracy.{pdf,png} to
-tex/Copernicus-EGU/figures/.
+figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

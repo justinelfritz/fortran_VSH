@@ -10,7 +10,7 @@ shaped in both theta and phi for Part B).
 
 Reads examples/vsh_decomposition_tor/*.dat (produced by the
 vsh_decomposition_tor executable) and writes
-vsh_decomposition_tor_convergence.{pdf,png} to tex/Copernicus-EGU/figures/.
+vsh_decomposition_tor_convergence.{pdf,png} to figures/.
 
 Run from the project root, after generating the example data:
     cmake -B build -DVSH_BUILD_EXAMPLES=ON && cmake --build build

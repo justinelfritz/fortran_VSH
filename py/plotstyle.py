@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR   = os.path.dirname(SCRIPT_DIR)
-FIG_DIR    = os.path.join(ROOT_DIR, 'tex', 'Copernicus-EGU', 'figures')
+FIG_DIR    = os.path.join(ROOT_DIR, 'figures')
 
 # ── categorical palette, fixed order ─────────────────────────────────────────
 BLUE    = '#2a78d6'

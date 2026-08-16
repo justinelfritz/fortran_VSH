@@ -26,6 +26,9 @@ CTestTestfile.cmake
 /convergence/
 /stability/
 
+# Generated publication figures (regenerate via py/plot_*.py; see plotstyle.py)
+/figures/
+
 # Python bytecode cache
 __pycache__/
 
