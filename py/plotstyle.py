@@ -21,10 +21,10 @@ MAGENTA = '#e87ba4'
 
 # ── chrome & ink ──────────────────────────────────────────────────────────────
 INK_PRIMARY   = '#0b0b0b'
-INK_SECONDARY = '#52514e'
+INK_SECONDARY = "#0b0b0b"
 INK_MUTED     = '#898781'
 GRIDLINE      = '#e1e0d9'
-AXIS_LINE     = '#c3c2b7'
+AXIS_LINE     = "#3a3a3a"
 SURFACE       = '#fcfcfb'
 
 

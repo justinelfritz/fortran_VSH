@@ -89,13 +89,17 @@ def plot_scaling():
                 solid_capstyle='round', label='Batch (_ALL)', zorder=3)
         ax.set_xscale('log')
         ax.set_yscale('log')
-        ax.set_title(label, color=INK_PRIMARY, fontsize=10)
-        ax.set_xlabel(r'$L_{max}$', fontsize=9, color=INK_SECONDARY)
-    axes[0].set_ylabel('wall time per evaluation (s)', fontsize=9,
+        ax.set_title(label, color=INK_PRIMARY, fontsize=12)
+        ax.set_xlabel(r'$L_{max}$', fontsize=12, color=INK_SECONDARY)
+        ax.set_xticks([1.0, 10.0, 100.0, 1000.0])
+        ax.set_xticklabels([r'$10^{0}$', r'$10^{1}$', r'$10^{2}$', r'$10^{3}$'],fontsize=11,color=INK_SECONDARY)
+        ax.set_yticks([1.e-8, 1.e-7, 1.e-6, 1.e-5, 1.e-4, 1.e-3, 1.e-2, 1.e-1])
+        ax.set_yticklabels([r'$10^{-8}$', r'$10^{-7}$', r'$10^{-6}$',r'$10^{-5}$', r'$10^{-4}$', r'$10^{-3}$',r'$10^{-2}$', r'$10^{-1}$'],fontsize=11,color=INK_SECONDARY)
+    axes[0].set_ylabel('wall time per evaluation (s)', fontsize=12,
                         color=INK_SECONDARY)
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=2, frameon=False,
-               bbox_to_anchor=(0.5, 1.06), fontsize=9,
+               bbox_to_anchor=(0.5, 1.06), fontsize=12,
                labelcolor=INK_SECONDARY)
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig

@@ -96,12 +96,16 @@ def plot_convergence_unnormalized():
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(0.9, SAFE_LMAX * 1.1)
-    ax.set_xlabel(r'$\ell$', fontsize=10, color=INK_SECONDARY)
+    ax.set_xlabel(r'$\ell$', fontsize=11, color=INK_SECONDARY)
     ax.set_ylabel('max relative error vs.\nindependent (mpmath) reference',
-                  fontsize=9, color=INK_SECONDARY)
+                  fontsize=10, color=INK_SECONDARY)
+    ax.set_xticks([1.0, 10.0, 100.0])
+    ax.set_xticklabels([r'$10^{0}$', r'$10^{1}$', r'$10^{2}$'],fontsize=10,color=INK_SECONDARY)
+    ax.set_yticks([1.e-14, 1.e-13, 1.e-12])
+    ax.set_yticklabels([r'$10^{-14}$', r'$10^{-13}$', r'$10^{-12}$'],fontsize=10,color=INK_SECONDARY)
     ax.set_title(f'Legendre (unnormalized), worst-case $m=\\ell$, '
                  f'verified-safe range', color=INK_PRIMARY, fontsize=10)
-    ax.legend(loc='upper left', frameon=False, fontsize=9,
+    ax.legend(loc='upper left', frameon=False, fontsize=10,
               labelcolor=INK_SECONDARY)
     fig.tight_layout()
     savefig_pair(fig, 'convergence_accuracy_unnormalized')

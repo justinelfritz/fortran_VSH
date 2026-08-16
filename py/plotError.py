@@ -61,12 +61,21 @@ if __name__ == '__main__':
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), facecolor=SURFACE)
     plot_test(axes[0], 'TEST1.dat', 'Test 1')
     plot_test(axes[1], 'TEST2.dat', 'Test 2')
-    axes[0].set_ylabel('difference from analytic form (%)', fontsize=9,
+    axes[0].set_ylabel('difference from analytic form (%)', fontsize=11,
                         color=INK_SECONDARY)
+
+    axes[0].set_xticks([0.0, np.pi/4.0, np.pi/2.0, 3.0*np.pi/4.0, np.pi])
+    axes[0].set_xticklabels([r'$0$', r'$\pi/4$', r'$\pi/2$', r'$3\pi/4$', r'$\pi$'],fontsize=10,color=INK_SECONDARY)
+    axes[0].set_yticks([1.e-18, 1.e-17, 1.e-16, 1.e-15, 1.e-14, 1.e-13, 1.e-12, 1.e-11, 1.e-10])
+    axes[0].set_yticklabels([r'$10^{-18}$', r'$10^{-17}$', r'$10^{-16}$',r'$10^{-15}$', r'$10^{-14}$', r'$10^{-13}$',r'$10^{-12}$', r'$10^{-11}$', r'$10^{-10}$'],fontsize=10,color=INK_SECONDARY)
+    axes[1].set_xticks([0.0, np.pi/4.0, np.pi/2.0, 3.0*np.pi/4.0, np.pi])
+    axes[1].set_xticklabels([r'$0$', r'$\pi/4$', r'$\pi/2$', r'$3\pi/4$', r'$\pi$'],fontsize=10,color=INK_SECONDARY)
+    axes[1].set_yticks([1.e-18, 1.e-17, 1.e-16, 1.e-15, 1.e-14, 1.e-13, 1.e-12, 1.e-11, 1.e-10])
+    axes[1].set_yticklabels([r'$10^{-18}$', r'$10^{-17}$', r'$10^{-16}$',r'$10^{-15}$', r'$10^{-14}$', r'$10^{-13}$',r'$10^{-12}$', r'$10^{-11}$', r'$10^{-10}$'],fontsize=10,color=INK_SECONDARY)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=2, frameon=False,
-               bbox_to_anchor=(0.5, 1.06), fontsize=9,
+               bbox_to_anchor=(0.5, 1.06), fontsize=11,
                labelcolor=INK_SECONDARY)
     fig.tight_layout(rect=(0, 0, 1, 0.90))
 
